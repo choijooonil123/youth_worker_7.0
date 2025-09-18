@@ -1657,5 +1657,137 @@
 })();
 </script>
 
+<script>
+/* ================= [추가] 자동로그인: 체크 시 자격 저장 & 다음 방문 자동 로그인 ================= */
+(function autoLoginInit(){
+  const LS_AUTO_ENABLED = "yj_auto_enabled_v1";
+  const LS_AUTO_EMAIL   = "yj_auto_email_v1";
+  const LS_AUTO_PASS    = "yj_auto_pass_v1";
+  const LS_AUTO_TRIED   = "yj_auto_tried_once_v1"; // 새로고침 루프 방지
+
+  const autoChk = document.getElementById("autoLoginChk");
+  const emailEl = document.getElementById("email");
+  const passEl  = document.getElementById("password");
+
+  function setInputsFromStorage(){
+    try{
+      const en = localStorage.getItem(LS_AUTO_ENABLED)==="1";
+      if(autoChk) autoChk.checked = en;
+      if(en){
+        const em = localStorage.getItem(LS_AUTO_EMAIL)||"";
+        const pw = localStorage.getItem(LS_AUTO_PASS)||"";
+        if(emailEl && !emailEl.value) emailEl.value = em;
+        if(passEl  && !passEl.value)  passEl.value  = pw;
+      }
+    }catch(_){}
+  }
+
+  function saveAutoCreds(email, pass){
+    try{
+      localStorage.setItem(LS_AUTO_ENABLED, autoChk && autoChk.checked ? "1":"0");
+      if(autoChk && autoChk.checked){
+        localStorage.setItem(LS_AUTO_EMAIL, email||"");
+        localStorage.setItem(LS_AUTO_PASS,  pass||"");
+      }else{
+        localStorage.removeItem(LS_AUTO_EMAIL);
+        localStorage.removeItem(LS_AUTO_PASS);
+      }
+    }catch(_){}
+  }
+
+  function clearTriedFlagSoon(){
+    // onAuthStateChanged나 화면 전환 이후 다시 자동로그인 허용
+    setTimeout(()=> localStorage.removeItem(LS_AUTO_TRIED), 1500);
+  }
+
+  // 1) 초기 입력/체크박스 상태 반영
+  setInputsFromStorage();
+
+  // 2) 기존 로그인 버튼 핸들러를 래핑(성공시에만 저장)
+  (function patchLoginHandler(){
+    const btn = document.getElementById("loginBtn");
+    if(!btn) return;
+    if(btn.__autopatched) return;
+
+    const orig = btn.onclick; // 기존 async 핸들러
+    btn.onclick = async function(){
+      // 로그인 시도 직전 상태
+      const wantAuto = autoChk && autoChk.checked;
+      const em = (emailEl?.value||"").trim();
+      const pw = passEl?.value||"";
+
+      // 성공 여부 감지를 위해 1회용 onAuthStateChanged 구독
+      let unsub = null;
+      try{
+        if(window.__cloudReady && window.__fb_api?.onAuthStateChanged){
+          unsub = window.__fb_api.onAuthStateChanged(window.__fb.auth, (u)=>{
+            if(u){ // 로그인 성공
+              if(wantAuto) saveAutoCreds(em, pw);
+              else saveAutoCreds("", ""); // 체크 안 되어 있으면 비움
+              if(typeof unsub==="function") unsub();
+            }
+          });
+        }
+      }catch(_){}
+
+      // 원래 로그인 로직 실행
+      try{ await orig?.(); }catch(e){ /* 기존 오류 처리 유지 */ }
+
+      // 약간 뒤에 tried 플래그 정리
+      clearTriedFlagSoon();
+    };
+    btn.__autopatched = true;
+  })();
+
+  // 3) 자동로그인 1회 시도 (앱 최초 진입 시)
+  (async function tryAutoOnce(){
+    try{
+      if(!window.__cloudReady) return;
+      const enabled = localStorage.getItem(LS_AUTO_ENABLED)==="1";
+      const tried   = localStorage.getItem(LS_AUTO_TRIED)==="1";
+      const em      = localStorage.getItem(LS_AUTO_EMAIL)||"";
+      const pw      = localStorage.getItem(LS_AUTO_PASS)||"";
+
+      if(!enabled || tried || !em || !pw) return;
+
+      // 루프 방지 플래그 설정
+      localStorage.setItem(LS_AUTO_TRIED, "1");
+
+      // 로그인 화면에 채워두기(가시성)
+      if(emailEl && !emailEl.value) emailEl.value = em;
+      if(passEl  && !passEl.value)  passEl.value  = pw;
+
+      // 실제 로그인 시도
+      const { signInWithEmailAndPassword } = window.__fb_api || {};
+      if(typeof signInWithEmailAndPassword === "function"){
+        await signInWithEmailAndPassword(window.__fb.auth, em, pw);
+      }
+      clearTriedFlagSoon();
+    }catch(e){
+      // 자동로그인 실패 시, 다음 로드 때 다시 시도할 수 있도록 플래그 해제
+      localStorage.removeItem(LS_AUTO_TRIED);
+      console.warn("[AUTO-LOGIN] failed", e?.code || e);
+    }
+  })();
+
+  // 4) 사용자가 체크만 바꿔도 상태 저장 (자격은 실제 로그인 성공 시 확정 저장)
+  if(autoChk && !autoChk.__bound){
+    autoChk.addEventListener("change", ()=>{
+      if(!autoChk.checked){
+        // 사용자가 해제하면 자격 비움
+        saveAutoCreds("", "");
+      }else{
+        // 켜기만 한 상태에서는 플래그만 켜두고, 실제 자격은 로그인 성공 시 저장
+        try{ localStorage.setItem(LS_AUTO_ENABLED, "1"); }catch(_){}
+      }
+    });
+    autoChk.__bound = true;
+  }
+
+  // 5) 로그아웃 버튼 눌러도 자동로그인은 유지(요구사항 그대로)
+  // 해제하려면 로그인 화면에서 체크 해제 후 로그인하세요.
+})();
+</script>
+  
 </body>
 </html>
