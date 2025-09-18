@@ -1562,5 +1562,96 @@
       await renderRanks();
     })();
   </script>
+
+  <script>
+/* ================= [추가] PWA 설치(바탕화면 아이콘) ================= */
+(function setupPWAInstall(){
+  // 1) 서비스워커 등록
+  if ("serviceWorker" in navigator) {
+    window.addEventListener("load", () => {
+      navigator.serviceWorker.register("./sw.js", { scope: "./" })
+        .then(reg => console.log("[SW] registered:", reg.scope))
+        .catch(err => console.warn("[SW] register failed:", err));
+    });
+  }
+
+  // 2) 설치 프롬프트 캐치 (Android/Chrome)
+  let deferredPrompt = null;
+  const LS_PWA_INSTALLED = "yj_pwa_installed_v1";
+  const LS_PWA_PROMPTED  = "yj_pwa_prompted_v1";
+
+  window.addEventListener("beforeinstallprompt", (e) => {
+    // 기본 배너 막고 우리가 제어
+    e.preventDefault();
+    deferredPrompt = e;
+
+    // 최초 접속 & 미설치 & 미프롬프트 시 자동 프롬프트 1회
+    const installed = window.matchMedia("(display-mode: standalone)").matches
+                   || window.navigator.standalone === true
+                   || localStorage.getItem(LS_PWA_INSTALLED) === "1";
+
+    const prompted = localStorage.getItem(LS_PWA_PROMPTED) === "1";
+
+    if (!installed && !prompted) {
+      localStorage.setItem(LS_PWA_PROMPTED, "1");
+      // 약간의 지연 후 자동 호출(화면 안정화 대기)
+      setTimeout(async () => {
+        try{
+          const r = await deferredPrompt.prompt(); // 네이티브 설치 다이얼로그
+          const choice = await deferredPrompt.userChoice;
+          if (choice && choice.outcome === "accepted") {
+            console.log("[PWA] user accepted install");
+          } else {
+            console.log("[PWA] user dismissed install");
+          }
+        }catch(err){
+          console.warn("[PWA] prompt failed:", err);
+        }finally{
+          deferredPrompt = null;
+        }
+      }, 1200);
+    }
+  });
+
+  // 3) 설치 완료 이벤트 → 로컬에 표시
+  window.addEventListener("appinstalled", () => {
+    localStorage.setItem(LS_PWA_INSTALLED, "1");
+    console.log("[PWA] app installed");
+  });
+
+  // 4) iOS 안내(자동): iOS는 beforeinstallprompt 미지원 → 1회 안내
+  function isIOS(){
+    return /iphone|ipad|ipod/i.test(navigator.userAgent);
+  }
+  function inStandalone(){
+    return window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone === true;
+  }
+  function showIOSHintOnce(){
+    const hinted = localStorage.getItem("yj_pwa_ios_hint_v1")==="1";
+    if(hinted) return;
+    if(isIOS() && !inStandalone()){
+      localStorage.setItem("yj_pwa_ios_hint_v1","1");
+      // 가벼운 토스트
+      const tip = document.createElement("div");
+      tip.textContent = "iOS: 공유(위로 화살표) ▶ ‘홈 화면에 추가’로 설치하세요.";
+      tip.style.position="fixed";
+      tip.style.left="50%";
+      tip.style.bottom="16px";
+      tip.style.transform="translateX(-50%)";
+      tip.style.background="#15204a";
+      tip.style.border="1px solid #2b3769";
+      tip.style.color="#eaf0ff";
+      tip.style.padding="10px 14px";
+      tip.style.borderRadius="12px";
+      tip.style.zIndex="9999";
+      tip.style.boxShadow="0 8px 24px rgba(0,0,0,.35)";
+      document.body.appendChild(tip);
+      setTimeout(()=> tip.remove(), 6000);
+    }
+  }
+  window.addEventListener("load", showIOSHintOnce);
+})();
+</script>
+
 </body>
 </html>
