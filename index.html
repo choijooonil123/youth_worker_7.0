@@ -2358,5 +2358,350 @@
 })();
 </script>
 
+<script>
+/* ================== 제출 동작 단순화 & 저장 시점 분리 오버라이드 ================== */
+/* 요구사항:
+   1) '답변완료' 클릭 시: 녹음→전사된 텍스트만 화면에 보여주고 끝(채점/발화/저장 X)
+   2) '정답목록에 저장' 클릭 시: 현재 편집된 텍스트를 그 때 정답목록에 저장
+*/
+
+(function enforceSimpleSubmitAndExplicitSave(){
+
+  /* 편집 UI 보장: #userAnswerEdit textarea가 없으면 만들어 둠 (추가설명 스타일) */
+  function ensureEditor(){
+    const ua = document.getElementById('userAnswer');
+    let ed = document.getElementById('userAnswerEdit');
+    if (!ed){
+      if (ua) ua.style.display = 'none';
+      const wrap = document.createElement('div');
+      wrap.id = 'userAnswerEditWrap';
+      const ta = document.createElement('textarea');
+      ta.id = 'userAnswerEdit';
+      ta.rows = 5;
+      ta.placeholder = '여기에 전사된 텍스트가 표시됩니다. 자유롭게 편집한 뒤 아래 버튼으로 정답목록에 저장하세요.';
+      ta.style.width = '100%';
+      ta.style.background = '#0b1330';
+      ta.style.color = 'var(--ink)';
+      ta.style.border = '1px solid #212c5c';
+      ta.style.borderRadius = '14px';
+      ta.style.padding = '8px';
+      ta.style.resize = 'vertical';
+      ta.style.minHeight = '80px';
+      ta.style.fontSize = '14px';
+
+      const saveBtn = document.createElement('button');
+      saveBtn.id = 'saveEditedBtn';
+      saveBtn.className = 'btn ok';
+      saveBtn.textContent = '📚 정답목록에 저장';
+      saveBtn.style.marginTop = '8px';
+
+      const anchor = ua ? ua.parentElement : (document.getElementById('result') || document.body);
+      wrap.appendChild(ta);
+      wrap.appendChild(saveBtn);
+      anchor.insertAdjacentElement('afterend', wrap);
+    }else{
+      // 버튼 라벨 고정
+      const saveBtn = document.getElementById('saveEditedBtn');
+      if (saveBtn) saveBtn.textContent = '📚 정답목록에 저장';
+    }
+  }
+
+  /* 전사 결과를 textarea에 채우기(1회 출력) */
+  function fillEditorWith(text){
+    ensureEditor();
+    const ed = document.getElementById('userAnswerEdit');
+    if (ed){
+      ed.disabled = false;
+      ed.value = (text||'').replace(/\s+/g,' ').trim();
+      ed.focus();
+      ed.setSelectionRange(ed.value.length, ed.value.length);
+    }
+  }
+
+  /* STT 정지(최종 버퍼 확보) */
+  function stopSTT_getFinalText(){
+    if (window.__recognition){
+      try{ window.__recognition.stop(); }catch(_){}
+      window.__recognition = null;
+    }
+    const finalText = (window.__sttBuffer || '').replace(/\s+/g,' ').trim();
+    return finalText;
+  }
+
+  /* MediaRecorder 정지(있으면) */
+  async function stopRecorderIfAny(){
+    try{
+      if (window.mediaRecorder && window.mediaRecorder.state !== 'inactive'){
+        await new Promise(res=>{
+          try{
+            window.mediaRecorder.onstop = res;
+            window.mediaRecorder.stop();
+          }catch(_){ res(); }
+        });
+      }
+    }catch(_){}
+  }
+
+  /* 1) '답변완료' 동작: 텍스트만 출력 */
+  function patchSubmitButton(){
+    const btn = document.getElementById('submitBtn');
+    if (!btn || btn.__simpleSubmitPatched) return;
+
+    // 기존 핸들러 제거(클론 교체) → 우리가 원하는 동작만 수행
+    const clone = btn.cloneNode(true);
+    btn.replaceWith(clone);
+
+    clone.addEventListener('click', async ()=>{
+      // 녹음/인식 종료
+      await stopRecorderIfAny();
+      const text = stopSTT_getFinalText();
+
+      // 전사 텍스트만 보여주고, 채점/발화/정답저장은 전혀 하지 않음
+      fillEditorWith(text);
+
+      // 결과 영역도 비워 두기(원한다면 유지 가능)
+      const res = document.getElementById('result');
+      if (res) res.innerHTML = '';
+    });
+
+    clone.__simpleSubmitPatched = true;
+  }
+
+  /* 2) '정답목록에 저장' 동작: 현재 편집 텍스트를 그 때 저장 */
+  function patchSaveButton(){
+    ensureEditor();
+    const btn = document.getElementById('saveEditedBtn');
+    if (!btn || btn.__explicitSavePatched) return;
+
+    // 라벨 보장
+    btn.textContent = '📚 정답목록에 저장';
+
+    // 기존 리스너 제거 후 재바인딩
+    const clone = btn.cloneNode(true);
+    btn.replaceWith(clone);
+
+    clone.addEventListener('click', async ()=>{
+      try{
+        const ed = document.getElementById('userAnswerEdit');
+        const text = (ed?.value || '').replace(/\s+/g,' ').trim();
+        if (!text){ alert('저장할 내용이 없습니다.'); return; }
+        if (!window.currentUser){ alert('로그인 후 사용하세요.'); return; }
+
+        const q = (window.raw||[]).find(x=> x._idx === window.currentIdx);
+        if (!q){ alert('문항을 찾을 수 없습니다.'); return; }
+
+        const userName = window.currentUser?.name || '사용자';
+        const finalText = `${text} — ${userName}`;
+
+        q.answers = q.answers || [];
+        const exists = q.answers.some(a=>{
+          const t = (typeof a==='object' ? (a.text||'') : String(a||'')).trim();
+          return t === finalText;
+        });
+        if (exists){ alert('이미 동일한 내용이 정답목록에 있습니다.'); return; }
+
+        q.answers.push({
+          text: finalText,
+          ownerUid: window.currentUser.uid,
+          ownerName: userName,
+          createdAt: new Date().toISOString()
+        });
+        q.active = q.answers.length - 1;
+
+        await window.persistQuestion(q);
+        if (typeof window.renderAnswerList === 'function') window.renderAnswerList();
+        alert('정답목록에 저장했습니다.');
+      }catch(e){
+        alert('저장 중 오류: ' + (e?.message||e));
+      }
+    });
+
+    clone.__explicitSavePatched = true;
+  }
+
+  /* 모달이 열릴 때마다 패치 재확인 */
+  (function hookDialogLifecycle(){
+    const _open = window.openQuestion;
+    window.openQuestion = async function(idx){
+      await _open(idx);
+      ensureEditor();
+      patchSubmitButton();
+      patchSaveButton();
+
+      // 새 문제 열 때 매번 에디터 초기화
+      const ed = document.getElementById('userAnswerEdit');
+      if (ed){ ed.disabled = false; ed.value = ''; }
+      const res = document.getElementById('result');
+      if (res) res.innerHTML = '';
+    };
+  })();
+
+  // 초기 1회 바인딩
+  if (document.readyState === 'loading'){
+    document.addEventListener('DOMContentLoaded', ()=>{
+      ensureEditor();
+      patchSubmitButton();
+      patchSaveButton();
+    });
+  }else{
+    ensureEditor();
+    patchSubmitButton();
+    patchSaveButton();
+  }
+
+  // 동적 생성 대응
+  const mo = new MutationObserver(()=>{ patchSubmitButton(); patchSaveButton(); });
+  mo.observe(document.body, { childList:true, subtree:true });
+
+})();
+</script>
+
+<script>
+/* ========= [오버라이드] '답변완료' → 채점 + 전사 텍스트 표시 (정답저장/음성재생 없음) ========= */
+(function patchSubmitForGradingOnly(){
+  /* 편집창(#userAnswerEdit) 보장: 없으면 추가설명 스타일 textarea 생성 */
+  function ensureEditor(){
+    const ua = document.getElementById('userAnswer');
+    let ed = document.getElementById('userAnswerEdit');
+    if (!ed){
+      if (ua) ua.style.display = 'none';
+      const wrap = document.createElement('div');
+      wrap.id = 'userAnswerEditWrap';
+
+      const ta = document.createElement('textarea');
+      ta.id = 'userAnswerEdit';
+      ta.rows = 5;
+      ta.placeholder = '여기에 전사된 텍스트가 표시됩니다. 자유롭게 편집하세요.';
+      ta.style.width = '100%';
+      ta.style.background = '#0b1330';
+      ta.style.color = 'var(--ink)';
+      ta.style.border = '1px solid #212c5c';
+      ta.style.borderRadius = '14px';
+      ta.style.padding = '8px';
+      ta.style.resize = 'vertical';
+      ta.style.minHeight = '80px';
+      ta.style.fontSize = '14px';
+
+      const anchor = ua ? ua.parentElement : (document.getElementById('result') || document.body);
+      wrap.appendChild(ta);
+      anchor.insertAdjacentElement('afterend', wrap);
+    }
+  }
+
+  /* STT 정지 후 최종 텍스트 수집 */
+  function stopSTT_getFinalText(){
+    if (window.__recognition){
+      try{ window.__recognition.stop(); }catch(_){}
+      window.__recognition = null;
+    }
+    return (window.__sttBuffer || '').replace(/\s+/g,' ').trim();
+  }
+
+  /* MediaRecorder 정지(있으면) — 오디오 저장/재생은 하지 않음 */
+  async function stopRecorderIfAny(){
+    try{
+      if (window.mediaRecorder && window.mediaRecorder.state !== 'inactive'){
+        await new Promise(res=>{
+          try{
+            window.mediaRecorder.onstop = res;
+            window.mediaRecorder.stop();
+          }catch(_){ res(); }
+        });
+      }
+    }catch(_){}
+  }
+
+  /* 유사도 계산(기존 로직과 동일한 집합 교집합 비율) */
+  function similarity(a,b){
+    const sa=new Set(String(a||'').split(/\s+/).filter(Boolean));
+    const sb=new Set(String(b||'').split(/\s+/).filter(Boolean));
+    let inter=0; sa.forEach(w=>{ if(sb.has(w)) inter++; });
+    return inter/(sa.size+sb.size-inter||1);
+  }
+
+  /* 활성 정답 텍스트 구하기 */
+  function getActiveAnswerText(q){
+    if(!q || !Array.isArray(q.answers) || !q.answers.length) return '';
+    const idx = (q.active||0);
+    const pick = q.answers[idx] || q.answers[0];
+    return (typeof pick==='object' ? (pick.text||'') : String(pick||''));
+  }
+
+  /* '답변완료' 버튼 패치 */
+  function patchSubmitButton(){
+    const btn = document.getElementById('submitBtn');
+    if (!btn || btn.__gradeOnlyPatched) return;
+
+    const clone = btn.cloneNode(true);
+    btn.replaceWith(clone);
+
+    clone.addEventListener('click', async ()=>{
+      // 1) 녹음/인식 종료
+      await stopRecorderIfAny();
+      const finalText = stopSTT_getFinalText();
+
+      // 2) 전사 텍스트를 편집창에 출력(저장/발화 없음)
+      ensureEditor();
+      const ed = document.getElementById('userAnswerEdit');
+      if (ed){
+        ed.disabled = false;
+        ed.value = finalText;
+        ed.focus();
+        ed.setSelectionRange(ed.value.length, ed.value.length);
+      }
+
+      // 3) 채점(유사도)만 표시
+      try{
+        const q = (window.raw||[]).find(x=> x._idx === window.currentIdx);
+        const gold = getActiveAnswerText(q);
+        const resBox = document.getElementById('result');
+        if (!gold){
+          if (resBox){
+            resBox.innerHTML = `<div class='answer-box'>정답이 등록되어 있지 않습니다. <b>“정답 추가”</b> 버튼으로 정답을 등록하세요.</div>`;
+          }
+          return;
+        }
+        const score = similarity(finalText, gold);
+        if (resBox){
+          // gold는 안내용으로만, 저장/발화 없음
+          const esc = s => String(s).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+          resBox.innerHTML =
+            `<div class='answer-box'>${esc(gold)}</div>` +
+            `<div class='score'>유사도 ${(score*100).toFixed(1)}%</div>`;
+        }
+      }catch(_){}
+    });
+
+    clone.__gradeOnlyPatched = true;
+  }
+
+  /* 모달 열릴 때마다 패치/초기화 */
+  (function hookDialog(){
+    const _open = window.openQuestion;
+    window.openQuestion = async function(idx){
+      await _open(idx);
+      ensureEditor();
+      patchSubmitButton();
+      const res = document.getElementById('result');
+      if (res) res.innerHTML = '';
+      const ed = document.getElementById('userAnswerEdit');
+      if (ed){ ed.disabled = false; ed.value = ''; }
+    };
+  })();
+
+  // 초기 1회
+  if (document.readyState === 'loading'){
+    document.addEventListener('DOMContentLoaded', ()=>{ ensureEditor(); patchSubmitButton(); });
+  }else{
+    ensureEditor(); patchSubmitButton();
+  }
+
+  // 동적 생성 대응
+  const mo = new MutationObserver(()=> patchSubmitButton());
+  mo.observe(document.body, { childList:true, subtree:true });
+})();
+</script>
+
+  
 </body>
 </html>
