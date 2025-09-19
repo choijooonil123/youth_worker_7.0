@@ -2115,6 +2115,162 @@
   })();
 })();
 </script>
-  
+
+<script>
+/* ================== '답변녹음 → 답변완료' 전 구간 완전 녹음 오버라이드 ================== */
+/* 목적: 답변녹음 버튼을 누르면 즉시 마이크 캡처와 MediaRecorder를 시작하고,
+         답변완료 버튼을 누르는 순간까지 전 구간을 100% 녹음한다. (STT는 기존 흐름 그대로) */
+
+(function perfectRecordingBetweenButtons(){
+  // 내부 상태
+  let recStream = null;          // MediaStream
+  let recorder  = null;          // MediaRecorder
+  let recChunks = [];            // Blob 파편
+  let recStopWaiter = null;      // stop 완료 대기 Promise
+  let isRecording = false;       // 진행 플래그
+
+  // 기존에 열려있는 스트림/레코더를 모두 종료
+  async function cleanupRecording(){
+    try{
+      if(recorder && recorder.state !== 'inactive'){
+        await stopRecorder(); // 안전 정지
+      }
+    }catch(_){}
+    if(recStream){
+      try{ recStream.getTracks().forEach(t=>t.stop()); }catch(_){}
+    }
+    recStream = null;
+    recorder  = null;
+    recChunks = [];
+    recStopWaiter = null;
+    isRecording = false;
+  }
+
+  // 마이크 시작 + MediaRecorder 시작
+  async function startRecorder(){
+    await cleanupRecording();
+
+    // 선호 디바이스 선택(있으면), 없으면 기본
+    let deviceId = null;
+    try{
+      const sel = document.getElementById('micSelect');
+      deviceId = sel && sel.value ? sel.value : null;
+    }catch(_){}
+
+    // OBS/Zoom 유사 옵션(에코제거/노이즈억제/AGC)
+    const constraints = {
+      audio: {
+        deviceId: deviceId ? { exact: deviceId } : undefined,
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true,
+        channelCount: 1,
+        sampleRate: 48000
+      }
+    };
+
+    recStream = await navigator.mediaDevices.getUserMedia(constraints);
+
+    // mimeType 호환 처리
+    const mimeCandidates = [
+      'audio/webm;codecs=opus',
+      'audio/webm',
+      'audio/ogg;codecs=opus',
+      ''
+    ];
+    let mime = '';
+    for(const m of mimeCandidates){
+      if(!m || MediaRecorder.isTypeSupported(m)){ mime = m; break; }
+    }
+
+    recorder  = mime ? new MediaRecorder(recStream, { mimeType: mime }) : new MediaRecorder(recStream);
+    recChunks = [];
+
+    recorder.ondataavailable = (e)=>{
+      if(e.data && e.data.size > 0) recChunks.push(e.data);
+    };
+    recStopWaiter = new Promise(res=>{
+      recorder.onstop = ()=> res();
+    });
+
+    // 타임슬라이스 없이 연속 녹음(전체를 온전히 보존)
+    recorder.start();
+    isRecording = true;
+  }
+
+  // MediaRecorder 정지 및 Blob 반환
+  async function stopRecorder(){
+    if(!recorder) return null;
+    const local = recStopWaiter;
+    if(recorder.state !== 'inactive'){
+      try{ recorder.stop(); }catch(_){}
+      try{ await local; }catch(_){}
+    }
+    const mime = recorder.mimeType || 'audio/webm';
+    const blob = new Blob(recChunks, { type: mime });
+    isRecording = false;
+    return blob;
+  }
+
+  // 버튼 연결: 답변녹음 → start, 답변완료 → stop
+  function wireButtons(){
+    const recBtn    = document.getElementById('recordBtn');
+    const submitBtn = document.getElementById('submitBtn');
+
+    if(recBtn && !recBtn.__perfectRec){
+      recBtn.addEventListener('click', async ()=>{
+        try{
+          await startRecorder();             // ★ 여기서부터 녹음 시작
+          // (참고) STT는 기존/오버레이 스크립트가 알아서 동작하므로 추가 조작 없음
+        }catch(e){
+          alert('마이크 녹음을 시작할 수 없습니다: ' + (e?.message || e));
+        }
+      });
+      recBtn.__perfectRec = true;
+    }
+
+    if(submitBtn && !submitBtn.__perfectRec){
+      const orig = submitBtn.onclick; // 기존 채점/표시 로직 보존
+      submitBtn.onclick = async ()=>{
+        // ★ 여기까지의 전체 오디오를 확보
+        let blob = null;
+        try{
+          if(isRecording){
+            blob = await stopRecorder();
+          }
+        }catch(_){}
+
+        // 원한다면 blob을 어딘가에서 활용할 수 있도록 노출(요청사항엔 저장/재생 요구 없음)
+        // 외부 스크립트가 필요 시 접근 가능
+        window.__lastAnswerAudioBlob = blob || null;
+
+        // 나머지 기존 동작(전사 출력/채점 등)은 그대로
+        try{ typeof orig === 'function' && orig(); }catch(_){}
+      };
+      submitBtn.__perfectRec = true;
+    }
+  }
+
+  // 모달 닫힘/열림 시 상태 정리
+  (function hookDialogLifecycle(){
+    const _open = window.openQuestion;
+    window.openQuestion = async function(idx){
+      await _open(idx);
+      // 새 질문 들어갈 때 이전 녹음 정리
+      await cleanupRecording();
+      wireButtons();
+    };
+    const _close = window.closeQuestion;
+    window.closeQuestion = function(){
+      cleanupRecording();
+      _close();
+    };
+  })();
+
+  // 초기 바인딩(페이지 이미 열려 있을 수 있으므로 1회 시도)
+  window.addEventListener('load', wireButtons);
+})();
+</script>
+
 </body>
-                                                           </html>
+</html>
