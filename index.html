@@ -2272,5 +2272,91 @@
 })();
 </script>
 
+<script>
+/* ====== "사용자 답변 저장" → "정답목록에 저장" & 저장 동작: 전사 텍스트를 정답목록에 추가 ====== */
+(function patchSaveToAnswerList(){
+  // 버튼이 동적으로 만들어지기도 하므로, 나타나는 즉시 패치
+  function tryPatch(btn){
+    if (!btn || btn.__patchedSaveToList) return;
+    // 1) 라벨 교체
+    btn.textContent = '📚 정답목록에 저장';
+
+    // 2) 기존 리스너 제거(클론 교체) 후, 우리가 원하는 동작으로 재바인딩
+    const clone = btn.cloneNode(true);
+    btn.replaceWith(clone);
+
+    clone.addEventListener('click', async ()=>{
+      try{
+        // 전사된 텍스트 우선순위: 자유편집 textarea → 기존 userAnswer 박스
+        const ta = document.getElementById('userAnswerEdit');
+        const ua = document.getElementById('userAnswer');
+        const rawText = (ta && !ta.disabled ? ta.value : (ua ? ua.innerText : '')) || '';
+        const text = rawText.replace(/\s+/g,' ').trim();
+        if (!text){ alert('저장할 내용이 없습니다.'); return; }
+        if (!window.currentUser){ alert('로그인 후 사용하세요.'); return; }
+
+        const userName = window.currentUser?.name || '사용자';
+        const finalText = `${text} — ${userName}`;
+
+        const q = (window.raw||[]).find(x=> x._idx === window.currentIdx);
+        if (!q){ alert('문항을 찾을 수 없습니다.'); return; }
+        q.answers = q.answers || [];
+
+        // 동일 문장 중복 방지
+        const exists = q.answers.some(a=>{
+          const t = (typeof a==='object' ? (a.text||'') : String(a||'')).trim();
+          return t === finalText;
+        });
+        if (exists){
+          alert('이미 동일한 내용이 정답목록에 있습니다.');
+          return;
+        }
+
+        q.answers.push({
+          text: finalText,
+          ownerUid: window.currentUser.uid,
+          ownerName: userName,
+          createdAt: new Date().toISOString()
+        });
+        q.active = q.answers.length - 1; // 방금 추가한 항목을 활성 정답으로
+        await window.persistQuestion(q);
+        if (typeof window.renderAnswerList === 'function') window.renderAnswerList();
+        alert('정답목록에 저장했습니다.');
+      }catch(e){
+        alert('저장 중 오류: ' + (e?.message||e));
+      }
+    });
+
+    clone.__patchedSaveToList = true;
+  }
+
+  function scanOnce(){
+    const btn = document.getElementById('saveEditedBtn');
+    if (btn) tryPatch(btn);
+  }
+
+  // 초기 시도
+  if (document.readyState === 'loading'){
+    document.addEventListener('DOMContentLoaded', scanOnce);
+  } else {
+    scanOnce();
+  }
+
+  // 동적 생성 대응
+  const mo = new MutationObserver((muts)=>{
+    for (const m of muts){
+      for (const n of m.addedNodes){
+        if (n.nodeType === 1){
+          if (n.id === 'saveEditedBtn') tryPatch(n);
+          const cand = n.querySelector && n.querySelector('#saveEditedBtn');
+          if (cand) tryPatch(cand);
+        }
+      }
+    }
+  });
+  mo.observe(document.body, { childList: true, subtree: true });
+})();
+</script>
+
 </body>
 </html>
