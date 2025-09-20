@@ -1024,25 +1024,29 @@
       return out;
     }
     
+    // [PATCH] 반복 단어/구절 정리 (1~10 단어까지 체크)
     function cleanRepeats(text){
       if (!text) return '';
       let s = String(text).replace(/\s+/g, ' ').trim();
       let words = s.split(' ');
     
-      // 1) 단어 즉시 반복 제거 (… A A A … → … A …)
+      // 1) 한 단어 즉시 반복 제거
       words = _collapseImmediateWordRepeats(words);
     
-      // 2) 3-gram, 2-gram 반복 제거 (… A B C D A B C D … → … A B C D …)
-      [3,2].forEach(n => { words = _collapseImmediateNgramRepeats(words, n); });
+      // 2) 10단어까지 n-gram 반복 제거 (10 → 2 순으로 검사)
+      for(let n=10; n>=2; n--){
+        words = _collapseImmediateNgramRepeats(words, n);
+      }
     
-      // 재조립
+      // 3) 재조립
       s = words.join(' ');
     
-      // 3) 구두점 앞 공백 정리
+      // 4) 구두점 앞 공백 정리
       s = s.replace(/\s+([,.!?])\s*/g, '$1 ').replace(/\s+/g, ' ').trim();
     
       return s;
     }
+
 
     // [PATCH] 정답 추가 전에 문장을 다듬는 함수
     function polishAnswerText(raw){
