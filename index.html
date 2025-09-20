@@ -328,6 +328,7 @@
     let recognition = null;
     let recBlinkTimer = null;
     let recFinalOnly = '';  
+    let sttActive = false;   // 모바일에서 자동 재시작 제어용
 
     const LS_SHARED = 'yj_shared_backup_v1';
     const LS_PROG   = 'yj_progress_backup_v1';
@@ -1076,71 +1077,64 @@
 
     // [교체] STT + 수음 시작
     function startRecognition(){
-      window.SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
       const box = document.getElementById('userAnswer');
       if(!box){ alert('userAnswer 요소를 찾을 수 없습니다.'); return; }
-
+    
+      // UI 표시
       box.innerHTML = `<span class="blink">답변녹음중…</span>`;
       box.focus();
-
-      if(!window.SpeechRecognition){
+    
+      // 이 기기/모드에서는 STT가 막히는 경우 처리 (Android PWA, 미지원, 오프라인 등)
+      if (sttBlockedOnThisDevice()){
+        box.innerHTML = '';
+        const hint = document.createElement('div');
+        hint.style.opacity = '.75';
+        hint.style.fontSize = '.9em';
+        hint.textContent = '이 기기/모드에서는 자동 전사가 제한됩니다. 키보드의 🎤(음성 입력)으로 말하거나 직접 입력하세요.';
+        box.appendChild(hint);
+        // (옵션) 필요 시 여기서 녹음 파일 저장 로직을 추가할 수 있음
         recFinalOnly = '';
-        interimText = '';
-      }else{
-        recognition = new SpeechRecognition();
-        recognition.lang = 'ko-KR';
-        recognition.continuous = true;
-        recognition.interimResults = true;
-        recFinalOnly = '';
-        interimText = '';
-
-        recognition.onresult = (event)=>{
-          let latestInterim = '';
-          for(let i=event.resultIndex;i<event.results.length;i++){
-            const t = event.results[i][0].transcript;
-            if(event.results[i].isFinal){
-              recFinalOnly += t + ' ';
-            }else{
-              latestInterim = t;
-            }
-          }
-          const cleanFinal = recFinalOnly.replace(/\s+/g,' ').trim();
-          box.innerHTML = '';
-          const finalNode = document.createTextNode(cleanFinal + (cleanFinal?' ':''));
-          box.appendChild(finalNode);
-          if(latestInterim){
-            const em = document.createElement('em');
-            em.style.opacity = '.6';
-            em.textContent = latestInterim;
-            box.appendChild(em);
-          }
-        };
-        recognition.onerror = (e)=>{ console.warn('[STT error]', e?.error || e); };
-        recognition.onend = ()=>{};
-        recognition.start();
+        return;
       }
-
-      startMicCapture().catch(err=>{
-        console.warn('[Mic] start fail', err);
-      });
+    
+      // 여기부터 STT 가능 환경
+      window.SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+      const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+      if(!Recognition){ box.textContent = ''; return; }
+    
+      recognition = new Recognition();
+      recognition.lang = 'ko-KR';
+      recognition.continuous = true;
+      recognition.interimResults = true;
+      recFinalOnly = '';
+      sttActive = true;
+    
+      recognition.onresult = (event)=>{
+        let latestInterim = '';
+        for(let i=event.resultIndex;i<event.results.length;i++){
+          const t = event.results[i][0].transcript;
+          if(event.results[i].isFinal){ recFinalOnly += t + ' '; }
+          else { latestInterim = t; }
+        }
+        const cleanFinal = recFinalOnly.replace(/\s+/g,' ').trim();
+        box.innerHTML = '';
+        box.appendChild(document.createTextNode(cleanFinal + (cleanFinal?' ':'')));
+        if(latestInterim){
+          const em = document.createElement('em');
+          em.style.opacity = '.6';
+          em.textContent = latestInterim;
+          box.appendChild(em);
+        }
+      };
+      recognition.onerror = (e)=>{ console.warn('[STT error]', e?.error || e); };
+      // 모바일에서 자주 끊김 → 자동 재시작
+      recognition.onend = ()=>{ if(sttActive){ try{ recognition.start(); }catch(_){/* noop */} } };
+    
+      try{ recognition.start(); }catch(_){}
     }
-    async function stopRecognition(fromClose=false){
-      if(recognition){
-        try{ recognition.stop(); }catch(_){}
-        recognition = null;
-      }
-      await stopMicCapture();
 
-      const box = document.getElementById('userAnswer');
-      if(!fromClose && box){
-        const clean = (recFinalOnly||'').replace(/\s+/g,' ').trim();
-        box.textContent = clean || '';
-        try{
-          const r = document.createRange(); r.selectNodeContents(box); r.collapse(false);
-          const s = getSelection(); s.removeAllRanges(); s.addRange(r);
-        }catch(_){}
-      }
     }
+    
     document.getElementById('recordBtn').onclick = ()=>{ startRecognition(); };
 
     function similarity(a,b){
@@ -1337,8 +1331,6 @@
         });
       }
     }
-
-
 
     // [교체] 상단 “정답추가” 버튼: 편집 텍스트 우선 추가
     document.getElementById('addAnswerBtn').onclick = async ()=>{
