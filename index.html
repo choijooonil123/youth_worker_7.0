@@ -810,22 +810,41 @@
     /* [추가] 마지막 로그인 정보 저장/불러오기 + 자동로그인 */
     const LS_CRED = 'yj_last_cred_v1';
     function saveCreds(email, pass){
-      try{ localStorage.setItem(LS_CRED, JSON.stringify({email, pass})); }catch(_){}
+      localStorage.setItem("lastEmail", email);
+      localStorage.setItem("lastPass", pass);
     }
     function loadCreds(){
-      try{ const v = localStorage.getItem(LS_CRED); return v? JSON.parse(v) : null; }catch{ return null; }
+      return {
+        email: localStorage.getItem("lastEmail"),
+        pass: localStorage.getItem("lastPass")
+      };
     }
+
+    
     async function tryAutoLogin(){
       try{
         if(!window.__cloudReady) return;
         const saved = loadCreds();
         if(!saved || !saved.email || !saved.pass) return;
+    
         const { signInWithEmailAndPassword } = window.__fb_api;
-        await signInWithEmailAndPassword(window.__fb.auth, saved.email, saved.pass);
+        const userCredential = await signInWithEmailAndPassword(
+          window.__fb.auth,
+          saved.email,
+          saved.pass
+        );
+    
+        console.log("[autoLogin] 성공:", saved.email);
+    
+        // ✅ 자동 로그인 성공 → 메인 화면으로 이동
+        window.location.href = "main.html";   // ← 실제 메인 화면 파일명으로 교체
+    
       }catch(e){
         console.warn('[autoLogin] skip:', e?.code || e);
       }
     }
+
+    
     document.addEventListener('DOMContentLoaded', ()=>{ tryAutoLogin(); });
 
     async function postLoginUI(){
@@ -1891,6 +1910,11 @@
       const reg = await navigator.serviceWorker.getRegistration();
       if (!reg) { navigator.serviceWorker.register('./sw.js').catch(console.warn); }
     });
+  }
+
+    // ===== 페이지 로드 시 자동 로그인 시도 =====
+  window.addEventListener("load", ()=>{
+    tryAutoLogin();
   }
   </script>
 
