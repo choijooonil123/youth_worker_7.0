@@ -332,6 +332,9 @@
     let recBlinkTimer = null;
     let recFinalOnly = '';  
     let sttActive = false;   // 모바일에서 자동 재시작 제어용
+    // [PATCH] 녹음/전사 진행 여부 플래그
+    let __isRecording = false;
+
 
     const LS_SHARED = 'yj_shared_backup_v1';
     const LS_PROG   = 'yj_progress_backup_v1';
@@ -1102,7 +1105,15 @@
     window.openQuestion = openQuestion;
     document.getElementById('closeBtn').onclick = closeQuestion;
 
-    function speak(txt){ const u=new SpeechSynthesisUtterance(txt); u.lang='ko-KR'; speechSynthesis.cancel(); speechSynthesis.speak(u); }
+    // [PATCH] 녹음 중에는 절대 TTS 재생하지 않음
+    function speak(txt){
+      if (__isRecording) return;          // 녹음(전사) 중엔 재생 금지
+      try { speechSynthesis.cancel(); } catch(_) {}
+      const u = new SpeechSynthesisUtterance(txt);
+      u.lang = 'ko-KR';
+      speechSynthesis.speak(u);
+    }
+
     document.getElementById('speakBtn').onclick = ()=>{ const q=raw.find(x=>x._idx===currentIdx); if(q) speak(q.question); };
 
     document.getElementById('ttsExtraBtn').onclick = ()=>{
@@ -1115,7 +1126,11 @@
     function startRecognition(){
       const box = document.getElementById('userAnswer');
       if(!box){ alert('userAnswer 요소를 찾을 수 없습니다.'); return; }
-    
+      
+      // [PATCH] 녹음 시작 전에 재생 중인 TTS(시스템 출력) 즉시 중지 + 녹음 플래그 on
+      try { speechSynthesis.cancel(); } catch(_) {}
+      __isRecording = true;
+
       // UI 표시
       box.innerHTML = `<span class="blink">답변녹음중…</span>`;
       box.focus();
@@ -1187,6 +1202,9 @@
           const s = getSelection(); s.removeAllRanges(); s.addRange(r);
         }catch(_){}
       }
+      // [PATCH] 전사 종료 → TTS 재생 허용 상태
+      __isRecording = false;
+      
     }
 
 
