@@ -307,6 +307,20 @@
 
   <script>
     /* ================= 공통 상태/유틸 ================= */
+    // === STT/환경 감지 유틸 ===
+    const isAndroid = /Android/i.test(navigator.userAgent);
+    const isStandalone = window.matchMedia('(display-mode: standalone)').matches ||
+                         window.navigator.standalone === true; // iOS
+    const hasSTT = !!(window.SpeechRecognition || window.webkitSpeechRecognition);
+    
+    function sttBlockedOnThisDevice(){
+      // 안드로이드 PWA(standalone) 또는 STT 미지원 또는 오프라인이면 전사 불가
+      if (!hasSTT) return true;
+      if (isAndroid && isStandalone) return true;
+      if (!navigator.onLine) return true;
+      return false;
+    }
+
     let raw = [];        
     let data = [];       
     let currentUser = null; 
