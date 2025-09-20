@@ -1203,7 +1203,7 @@
               <textarea rows="3" style="width:100%" data-ans-ta="${i}">${esc(txt)}</textarea>
             </div>
             <div class="ans-actions" style="display:flex; gap:6px">
-              <button class="btn" data-edit-ans="${i}">✏️ 편집</button>
+              <button class="btn" data-edit-ans="${i}">✏️</button>
               <button class="btn ok" data-save-ans="${i}" style="display:none">💾 저장</button>
               <button class="btn" data-cancel-ans="${i}" style="display:none">↩ 취소</button>
               ${delBtn}
@@ -1216,7 +1216,6 @@
         `<div style="display:flex; align-items:center; justify-content:space-between; gap:8px; margin:10px 0 6px; flex-wrap:wrap">
            <h3 style="margin:0">정답 목록</h3>
            <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap">
-             <button id="addAnswerBtn_inline" class="btn">➕ 정답 추가</button>
              <button id="ttsAnswerBtn_inline" class="btn">🔊 정답 듣기</button>
            </div>
          </div>` + items;
