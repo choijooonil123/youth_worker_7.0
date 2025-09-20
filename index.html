@@ -997,6 +997,45 @@
       await updateHeaderUser();
     }
 
+    // [PATCH] 반복 인식된 단어/구절 정리 유틸들
+    function _collapseImmediateWordRepeats(words){
+      const out = [];
+      for (let i = 0; i < words.length; i++){
+        const w = words[i];
+        if (!w) continue;
+        if (out.length && out[out.length-1] === w) continue; // 바로 앞 단어와 동일 → 스킵
+        out.push(w);
+      }
+      return out;
+    }
+    function _collapseImmediateNgramRepeats(words, n){
+      if (words.length < 2*n) return words;
+      const out = words.slice();
+      let changed = true;
+      while (changed){
+        changed = false;
+        for (let i = 0; i <= out.length - 2*n; i++){
+          let same = true;
+          for (let k = 0; k < n; k++){
+            if (out[i+k] !== out[i+n+k]) { same = false; break; }
+          }
+          if (same){ out.splice(i, n); changed = true; break; }
+        }
+      }
+      return out;
+    }
+    function cleanRepeats(text){
+      if (!text) return '';
+      let s = String(text).replace(/\s+/g, ' ').trim();
+      let words = s.split(' ');
+      words = _collapseImmediateWordRepeats(words);      // A A A → A
+      [4,3,2].forEach(n => { words = _collapseImmediateNgramRepeats(words, n); }); // ABCD ABCD → ABCD
+      s = words.join(' ');
+      s = s.replace(/\s+([,.!?])\s*/g, '$1 ').replace(/\s+/g, ' ').trim();
+      return s;
+    }
+
+    
     /* ================= 질문 모달/음성/유사도/추가기능 ================= */
 
     // === [추가] OBS/ZOOM 느낌 수음 + MediaRecorder + STT 통합 ===
@@ -1167,16 +1206,21 @@
           if(event.results[i].isFinal){ recFinalOnly += t + ' '; }
           else { latestInterim = t; }
         }
-        const cleanFinal = recFinalOnly.replace(/\s+/g,' ').trim();
+      
+        // [PATCH] 최종/중간 텍스트 모두 반복 제거
+        const cleanFinal = cleanRepeats(recFinalOnly);
+        const box = document.getElementById('userAnswer');
         box.innerHTML = '';
         box.appendChild(document.createTextNode(cleanFinal + (cleanFinal?' ':'')));
+      
         if(latestInterim){
           const em = document.createElement('em');
           em.style.opacity = '.6';
-          em.textContent = latestInterim;
+          em.textContent = cleanRepeats(latestInterim);
           box.appendChild(em);
         }
       };
+
       recognition.onerror = (e)=>{ console.warn('[STT error]', e?.error || e); };
       // 모바일에서 자주 끊김 → 자동 재시작
       recognition.onend = ()=>{ if(sttActive){ try{ recognition.start(); }catch(_){/* noop */} } };
@@ -1192,8 +1236,8 @@
     
       const box = document.getElementById('userAnswer');
       if(!fromClose && box){
-        const clean = (recFinalOnly||'').replace(/\s+/g,' ').trim();
-        // STT 성공 시 전사 텍스트 확정, 실패 시 사용자가 입력한 내용을 그대로 둠
+        // [PATCH] 최종 확정 텍스트도 반복 제거
+        const clean = cleanRepeats(recFinalOnly || box.textContent || '');
         if (clean){ box.textContent = clean; }
         else if (!box.textContent.trim()){ box.textContent = ''; }
     
@@ -1202,12 +1246,10 @@
           const s = getSelection(); s.removeAllRanges(); s.addRange(r);
         }catch(_){}
       }
-      // [PATCH] 전사 종료 → TTS 재생 허용 상태
+    
+      // [PATCH] 전사 종료 → TTS 허용
       __isRecording = false;
-      
     }
-
-
     
     function similarity(a,b){
       const sa=new Set(String(a).split(/\s+/).filter(Boolean));
