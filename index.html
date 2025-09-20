@@ -309,17 +309,17 @@
     /* ================= 공통 상태/유틸 ================= */
     // === STT/환경 감지 유틸 ===
     const isAndroid = /Android/i.test(navigator.userAgent);
-    const isStandalone = window.matchMedia('(display-mode: standalone)').matches ||
-                         window.navigator.standalone === true; // iOS
+    const isStandalone = window.matchMedia('(display-mode: standalone)').matches
+                      || window.navigator.standalone === true; // iOS
     const hasSTT = !!(window.SpeechRecognition || window.webkitSpeechRecognition);
     
     function sttBlockedOnThisDevice(){
-      // 안드로이드 PWA(standalone) 또는 STT 미지원 또는 오프라인이면 전사 불가
       if (!hasSTT) return true;
       if (isAndroid && isStandalone) return true;
       if (!navigator.onLine) return true;
       return false;
     }
+
 
     let raw = [];        
     let data = [];       
@@ -1137,6 +1137,26 @@
     
     document.getElementById('recordBtn').onclick = ()=>{ startRecognition(); };
 
+    function stopRecognition(fromClose=false){
+      sttActive = false;
+      if(recognition){ try{ recognition.stop(); }catch(_){ } recognition = null; }
+    
+      const box = document.getElementById('userAnswer');
+      if(!fromClose && box){
+        const clean = (recFinalOnly||'').replace(/\s+/g,' ').trim();
+        // STT 성공 시 전사 텍스트 확정, 실패 시 사용자가 입력한 내용을 그대로 둠
+        if (clean){ box.textContent = clean; }
+        else if (!box.textContent.trim()){ box.textContent = ''; }
+    
+        try{
+          const r = document.createRange(); r.selectNodeContents(box); r.collapse(false);
+          const s = getSelection(); s.removeAllRanges(); s.addRange(r);
+        }catch(_){}
+      }
+    }
+
+
+    
     function similarity(a,b){
       const sa=new Set(String(a).split(/\s+/).filter(Boolean));
       const sb=new Set(String(b).split(/\s+/).filter(Boolean));
@@ -1334,31 +1354,34 @@
 
     // [교체] 상단 “정답추가” 버튼: 편집 텍스트 우선 추가
     document.getElementById('addAnswerBtn').onclick = async ()=>{
-      const q=raw.find(x=>x._idx===currentIdx); if(!q) return;
+      const q = raw.find(x=>x._idx===currentIdx); if(!q) return;
       if(!currentUser){ alert('로그인 후 사용하세요.'); return; }
-
+    
       const box = document.getElementById('userAnswer');
       let val = (box?.textContent || '').replace(/\s+/g,' ').trim();
+    
       if(!val){
         val = prompt('추가할 정답(변형)을 입력하세요');
         if(!val) return;
         val = String(val).trim();
       }
-
-      q.answers=q.answers||[];
+    
+      q.answers = q.answers || [];
       const rec = {
         text: val,
         ownerUid: currentUser.uid,
-        ownerName: currentUser.name||'사용자',
+        ownerName: currentUser.name || '사용자',
         createdAt: new Date().toISOString()
       };
-      const exists = (q.answers||[]).some(a=>answerText(a)===val);
+      const exists = (q.answers||[]).some(a => (typeof a==='object'? a.text : String(a||'')).trim() === val);
       if(!exists) q.answers.push(rec);
-      q.active=q.answers.length-1;
+      q.active = q.answers.length - 1;
+    
       await persistQuestion(q);
       renderAnswerList();
-      alert('편집한 답변을 정답목록에 추가했습니다.');
+      alert('현재 답변을 정답목록에 추가했습니다.');
     };
+
 
     document.getElementById('saveExtraInfoBtn').onclick = async ()=>{
       const q=raw.find(x=>x._idx===currentIdx); if(!q) return;
@@ -1722,11 +1745,12 @@
   </script>
   <script>
   if ('serviceWorker' in navigator) {
-    window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js').catch(console.warn);
+    window.addEventListener('load', async () => {
+      const reg = await navigator.serviceWorker.getRegistration();
+      if (!reg) { navigator.serviceWorker.register('./sw.js').catch(console.warn); }
     });
   }
-</script>
+  </script>
 
   
 </body>
