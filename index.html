@@ -1023,16 +1023,27 @@
       }
       return out;
     }
+    
     function cleanRepeats(text){
       if (!text) return '';
       let s = String(text).replace(/\s+/g, ' ').trim();
       let words = s.split(' ');
-      words = _collapseImmediateWordRepeats(words);      // A A A → A
-      [4,3,2].forEach(n => { words = _collapseImmediateNgramRepeats(words, n); }); // ABCD ABCD → ABCD
+    
+      // 1) 단어 즉시 반복 제거 (… A A A … → … A …)
+      words = _collapseImmediateWordRepeats(words);
+    
+      // 2) 3-gram, 2-gram 반복 제거 (… A B C D A B C D … → … A B C D …)
+      [3,2].forEach(n => { words = _collapseImmediateNgramRepeats(words, n); });
+    
+      // 재조립
       s = words.join(' ');
+    
+      // 3) 구두점 앞 공백 정리
       s = s.replace(/\s+([,.!?])\s*/g, '$1 ').replace(/\s+/g, ' ').trim();
+    
       return s;
     }
+
 
     
     /* ================= 질문 모달/음성/유사도/추가기능 ================= */
