@@ -241,7 +241,7 @@
         <button id="ttsExtraBtn" class="btn">🔊 추가설명 듣기</button>
       </div>
 
-      <div>
+      <div id="followupsBlock">
         <h3>추가질문 및 답변</h3>
         <div id="followupsBox" class="answer-box" style="min-height:0"></div>
         <div class="row" style="align-items:flex-start">
@@ -1046,6 +1046,7 @@
       const resultEl = document.getElementById('result');
       const answersEl = document.getElementById('extraAnswers');
       const extraEl = document.getElementById('extraInfoBlock');
+      const followEl   = document.getElementById('followupsBlock');   // ← 추가
       const addBtn = document.getElementById('addAnswerBtn');
     
       if(resultEl)    resultEl.style.display    = show ? '' : 'none';
