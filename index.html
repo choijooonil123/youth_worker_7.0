@@ -3,6 +3,8 @@
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <link rel="icons" href="youth_icon_192.png" type="image/png">
   <link rel="apple-touch-icon" href="youth_icon_512.png">
   <link rel="manifest" href="manifest.json">
@@ -1712,5 +1714,14 @@
       await renderRanks();
     })();
   </script>
+  <script>
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('./sw.js').catch(console.warn);
+    });
+  }
+</script>
+
+  
 </body>
 </html>
