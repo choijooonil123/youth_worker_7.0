@@ -79,6 +79,7 @@
 
     /* [추가] userAnswer placeholder 시각화 */
     #userAnswer:empty:before{ content: attr(data-placeholder); opacity:.5 }
+    
   </style>
 
   <!-- Firebase SDK (ESM) -->
@@ -1190,17 +1191,14 @@
     
       const items = (q.answers||[]).map((ans,i)=>{
         const checked = (q.active||0)===i ? 'checked' : '';
-        const txt = answerText(ans);
-        const ownerTag = answerOwnerName(ans) ? ` &lt;${esc(answerOwnerName(ans))}&gt;` : '';
-        // 삭제는 기존 권한(canEditAnswer) 규칙 유지
+        const txt = (typeof ans==='object' ? ans.text : String(ans||''));
+        const ownerTag = (typeof ans==='object' && ans.ownerName) ? ` &lt;${esc(ans.ownerName)}&gt;` : '';
         const delBtn = canEditAnswer(ans) ? `<button class="btn danger" data-del-ans="${i}">🗑</button>` : '';
     
         return `
           <div class="ans-row" data-ans-row="${i}" style="display:flex;gap:8px;align-items:flex-start;margin:6px 0">
             <input type="radio" name="ansPick" value="${i}" ${checked} style="margin-top:6px"/>
-            <!-- 보기 모드 -->
             <div class="ans-view" style="flex:1">${esc(txt)}${ownerTag}</div>
-            <!-- 편집 모드 -->
             <div class="ans-edit" style="flex:1; display:none">
               <textarea rows="3" style="width:100%" data-ans-ta="${i}">${esc(txt)}</textarea>
             </div>
@@ -1223,7 +1221,6 @@
            </div>
          </div>` + items;
     
-      // 활성 정답 선택
       holder.querySelectorAll('input[name="ansPick"]').forEach(r=>{
         r.addEventListener('change', async (e)=>{
           q.active = parseInt(e.target.value,10)||0;
@@ -1231,7 +1228,6 @@
         });
       });
     
-      // 삭제(기존 권한 규칙 유지)
       holder.querySelectorAll('[data-del-ans]').forEach(btn=>{
         btn.addEventListener('click', async ()=>{
           const i = parseInt(btn.getAttribute('data-del-ans'),10);
@@ -1244,7 +1240,6 @@
         });
       });
     
-      // === 편집/저장/취소: 모든 정답에 대해 허용 ===
       function enterEditMode(i){
         const row = holder.querySelector(`[data-ans-row="${i}"]`);
         if(!row) return;
@@ -1254,9 +1249,7 @@
         row.querySelector(`[data-save-ans="${i}"]`).style.display = 'inline-block';
         row.querySelector(`[data-cancel-ans="${i}"]`).style.display = 'inline-block';
       }
-      function exitEditMode(i){
-        renderAnswerList(); // 가장 간단하고 안정적인 되돌리기
-      }
+      function exitEditMode(){ renderAnswerList(); }
     
       holder.querySelectorAll('[data-edit-ans]').forEach(btn=>{
         btn.addEventListener('click', ()=>{
@@ -1266,10 +1259,7 @@
       });
     
       holder.querySelectorAll('[data-cancel-ans]').forEach(btn=>{
-        btn.addEventListener('click', ()=>{
-          const i = parseInt(btn.getAttribute('data-cancel-ans'),10);
-          exitEditMode(i);
-        });
+        btn.addEventListener('click', ()=> exitEditMode());
       });
     
       holder.querySelectorAll('[data-save-ans]').forEach(btn=>{
@@ -1279,16 +1269,11 @@
           const newVal = (ta?.value || '').replace(/\s+/g,' ').trim();
           if(!newVal){ alert('내용을 입력하세요.'); return; }
     
-          // 기존 항목 타입(문자열/객체)에 상관없이 텍스트 갱신
-          if(isAnswerObj(q.answers[i])){
+          if(typeof q.answers[i] === 'object'){
             q.answers[i].text = newVal;
             q.answers[i].updatedAt = new Date().toISOString();
-            if(currentUser){
-              q.answers[i].updatedByUid = currentUser.uid;
-              q.answers[i].updatedByName = currentUser.name||'사용자';
-            }
+            if(currentUser){ q.answers[i].updatedByUid = currentUser.uid; q.answers[i].updatedByName = currentUser.name||'사용자'; }
           }else{
-            // 문자열이던 항목은 객체 형태로 승격하여 메타 보존
             q.answers[i] = {
               text: newVal,
               ownerUid: currentUser?.uid || '',
@@ -1297,14 +1282,12 @@
               updatedAt: new Date().toISOString()
             };
           }
-    
           await persistQuestion(q);
           renderAnswerList();
           alert('정답을 수정하여 저장했습니다.');
         });
       });
     
-      // 인라인 "정답 추가" / "정답 듣기" 기존 동작 유지
       const addInline = holder.querySelector('#addAnswerBtn_inline');
       if(addInline){
         addInline.addEventListener('click', async ()=>{
@@ -1317,7 +1300,7 @@
             ownerName: currentUser.name||'사용자',
             createdAt: new Date().toISOString()
           };
-          const exists = (q.answers||[]).some(a=>answerText(a)===rec.text);
+          const exists = (q.answers||[]).some(a=> (typeof a==='object'? a.text : String(a||'')) === rec.text);
           if(!exists) q.answers.push(rec);
           q.active=q.answers.length-1;
           await persistQuestion(q);
@@ -1328,12 +1311,18 @@
       const ttsInline = holder.querySelector('#ttsAnswerBtn_inline');
       if(ttsInline){
         ttsInline.addEventListener('click', ()=>{
-          const gold = getActiveAnswerText(q);
+          const gold = (function(){
+            if(!q || !Array.isArray(q.answers) || !q.answers.length) return '';
+            const idx = (q.active||0);
+            const pick = q.answers[idx] || q.answers[0];
+            return (typeof pick==='object'? pick.text : String(pick||''));
+          })();
           if(!gold){ alert('등록된 정답이 없습니다.'); return; }
           speak(gold);
         });
       }
     }
+
 
 
     // [교체] 상단 “정답추가” 버튼: 편집 텍스트 우선 추가
