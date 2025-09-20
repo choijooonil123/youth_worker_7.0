@@ -1052,6 +1052,7 @@
       if(resultEl)    resultEl.style.display    = show ? '' : 'none';
       if(answersEl)   answersEl.style.display   = show ? '' : 'none';
       if(extraEl)     extraEl.style.display     = show ? '' : 'none';
+      if(followEl)    followEl.style.display    = show ? '' : 'none';   // ← 이 줄 추가!
       if(addBtn)      addBtn.style.display      = show ? 'inline-block' : 'none';
     }
     
@@ -1083,7 +1084,9 @@
       document.getElementById('qd').showModal();
       speak(q.question);
       document.getElementById('qd')
-      // [추가] 정답추가 버튼 표시
+      // “처음부터 정답보기” 체크 상태에 따라, 제출 전 표시/숨김 즉시 적용
+      applyRevealMode(true);
+      
       document.getElementById('addAnswerBtn').style.display = 'inline-block';
 
       if(currentUser){
