@@ -214,9 +214,12 @@
         <button id="recordBtn" class="btn">🎤 답변녹음</button>
         <button id="submitBtn" class="btn primary">✅ 답변완료</button>
         <button id="addAnswerBtn" class="btn" style="display:none">➕ 정답 추가</button>
-
         <button id="learnedBtn" class="btn ok">📌 습득완료</button>
         <button id="closeBtn" class="btn danger">❌ 닫기</button>
+        <label style="display:flex;align-items:center;gap:6px;margin-left:auto">
+          <input id="revealEarly" type="checkbox" checked>
+          <span>처음부터 정답보기</span>
+        </label>
       </div>
 
       <!-- [변경] 편집 가능 + 오디오 모니터 추가 -->
@@ -230,7 +233,7 @@
       <div id="extraAnswers"></div>
 
       <hr style="border:0;border-top:1px solid #1f2a55;margin:8px 0">
-      <div>
+      <div id="extraInfoBlock">
         <h3>추가설명</h3>
         <textarea id="extraInfo" rows="5" placeholder="핵심 요점, 배경지식, 예시 등을 적어두세요."></textarea>
         <button id="saveExtraInfoBtn" class="btn">💾 추가설명 저장</button>
@@ -1038,6 +1041,35 @@
       });
     }
 
+    function setSectionVisibility(show){
+      // show=true면 표시, false면 숨김
+      const resultEl = document.getElementById('result');
+      const answersEl = document.getElementById('extraAnswers');
+      const extraEl = document.getElementById('extraInfoBlock');
+      const addBtn = document.getElementById('addAnswerBtn');
+    
+      if(resultEl)    resultEl.style.display    = show ? '' : 'none';
+      if(answersEl)   answersEl.style.display   = show ? '' : 'none';
+      if(extraEl)     extraEl.style.display     = show ? '' : 'none';
+      if(addBtn)      addBtn.style.display      = show ? 'inline-block' : 'none';
+    }
+    
+    function applyRevealMode(beforeSubmit=true){
+      const chk = document.getElementById('revealEarly');
+      const early = chk ? chk.checked : true;  // 체크 없으면 기존처럼
+      // early == true : 항상 보임 / early == false : 제출 전엔 숨김
+      setSectionVisibility(early ? true : !beforeSubmit ? true : false);
+    }
+
+    document.addEventListener('DOMContentLoaded', ()=>{
+      const chk = document.getElementById('revealEarly');
+      if(chk){
+        chk.addEventListener('change', ()=> applyRevealMode(true)); // 제출 전 모드로 반영
+      }
+    });
+
+
+    
     async function openQuestion(idx){
       currentIdx=idx;
       const q=raw.find(x=>x._idx===idx); if(!q) return;
@@ -1049,7 +1081,7 @@
       renderFollowups();
       document.getElementById('qd').showModal();
       speak(q.question);
-
+      document.getElementById('qd')
       // [추가] 정답추가 버튼 표시
       document.getElementById('addAnswerBtn').style.display = 'inline-block';
 
@@ -1178,7 +1210,8 @@
         return;
       }
       const sim=similarity(user,gold);
-      document.getElementById('result').innerHTML = `<div class='answer-box'>${esc(gold)}</div><div class='score'>유사도 ${(sim*100).toFixed(1)}%</div>`;
+      document.getElementById('result').innerHTML = `<div class='score'>유사도 ${(sim*100).toFixed(1)}%</div>`;
+      applyRevealMode(false); // 제출 후: 감춰진 섹션들을 표시
       speak('정답입니다. ' + gold);
     };
 
