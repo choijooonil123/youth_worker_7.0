@@ -1,4 +1,3 @@
-@@ -1,1845 +1,1845 @@
 <!doctype html>
 <html lang="ko">
 <head>
@@ -53,7 +52,7 @@
     @keyframes blink{ 50%{ opacity: .2 } }
 
     /* ======== [추가] 모바일 최적화 & 확대 스케일 ======== */
-    :root { --scale: 1; }
+    :root { --scale: 1; }                         
     body { font-size: calc(16px * var(--scale)); }
     .qbtn { 
       font-size: calc(14px * var(--scale)); 
@@ -77,7 +76,9 @@
       .dlg{ height:100%; overflow:auto; padding:12px; }
       #extraInfo{ min-height:120px; }
     }
-    /* ======== [추가 끝] ======== */
+
+    /* [추가] userAnswer placeholder 시각화 */
+    #userAnswer:empty:before{ content: attr(data-placeholder); opacity:.5 }
   </style>
 
   <!-- Firebase SDK (ESM) -->
@@ -144,7 +145,6 @@
 <body>
   <header>
     <div class="pill">청소년지도사 면접 대비</div>
-    <h1>학습시스템 7.0</h1>
     <h1>학습시스템 6.0</h1>
     <div class="spacer"></div>
     <div id="headerRank" class="pill" style="display:none"></div>
@@ -165,12 +165,6 @@
           <button id="signupBtn" class="btn">회원가입</button>
           <button id="resetPwBtn" class="btn">비밀번호 재설정</button>
         </div>
-        <!-- [추가] 자동로그인 체크 -->
-        <label style="display:flex;gap:8px;align-items:center;margin-top:6px">
-          <input id="autoLoginChk" type="checkbox">
-          <span style="font-size:13px;color:var(--muted)">자동로그인 (개인 기기에서만 사용하세요)</span>
-        </label>
-
         <div id="envErr" style="font-size:12px;color:#ffb3b3;min-height:18px"></div>
         <div id="rankList" style="margin-top:10px"></div>
       </div>
@@ -192,7 +186,6 @@
           <button id="exportBtn" class="btn">내보내기</button>
           <button id="importBtn" class="btn">가져오기</button>
           <input id="importFile" type="file" accept="application/json" style="display:none">
-          <!-- 관리자 전용 -->
           <button id="manageUsersBtn" class="btn" style="display:none">사용자 관리(관리자)</button>
         </div>
       </div>
@@ -217,15 +210,14 @@
 
         <button id="learnedBtn" class="btn ok">📌 습득완료</button>
         <button id="closeBtn" class="btn danger">❌ 닫기</button>
-
-        <!-- [추가] 마이크 선택 & 레벨미터 -->
-        <select id="micSelect" class="btn" style="max-width:240px"></select>
-        <div id="micLevel" style="width:120px;height:12px;background:#1a2248;border:1px solid #2b3769;border-radius:999px;overflow:hidden">
-          <div id="micFill" style="height:100%;width:0%"></div>
-        </div>
       </div>
 
-      <div><div class="answer-box" id="userAnswer"></div></div>
+      <!-- [변경] 편집 가능 + 오디오 모니터 추가 -->
+      <div>
+        <div class="answer-box" id="userAnswer" contenteditable="true" data-placeholder="여기에 자동으로 녹취 텍스트가 들어옵니다. 직접 수정도 가능합니다."></div>
+        <audio id="answerAudio" controls style="margin-top:8px; max-width:100%; display:none"></audio>
+      </div>
+
       <div id="result"></div>
 
       <div id="extraAnswers"></div>
@@ -258,14 +250,14 @@
         <h2 style="margin:0">새 질문 추가</h2>
         <button id="addDlgClose" class="btn danger">닫기</button>
       </div>
-
+  
       <div class="pill" id="addDlgSubjectPill" style="margin-bottom:8px"></div>
-
+  
       <div>
         <h3>질문</h3>
         <textarea id="addQ" rows="3" placeholder="질문을 입력하세요. 예) 청소년 정책의 3대 축은?"></textarea>
       </div>
-
+  
       <div>
         <h3>정답(모범답안)</h3>
         <div id="addAnswersBox" style="display:flex;flex-direction:column;gap:8px"></div>
@@ -274,12 +266,12 @@
         </div>
         <div class="pill" style="margin-top:6px">첫 번째 정답이 기본 활성 정답으로 저장됩니다.</div>
       </div>
-
+  
       <div>
         <h3>추가설명</h3>
         <textarea id="addExtra" rows="5" placeholder="핵심 요점, 배경지식, 예시 등을 적어두세요."></textarea>
       </div>
-
+  
       <div>
         <h3>추가질문 및 답변</h3>
         <div id="addFollowupsBox" style="display:flex;flex-direction:column;gap:8px"></div>
@@ -287,7 +279,7 @@
           <button id="addFUrowBtn" class="btn">➕ 추가질문/답변 입력칸 추가</button>
         </div>
       </div>
-
+  
       <div class="row" style="justify-content:flex-end">
         <button id="addDlgSave" class="btn primary">✅ 저장</button>
       </div>
@@ -308,20 +300,20 @@
 
   <script>
     /* ================= 공통 상태/유틸 ================= */
-    let raw = [];        // 전체 문항(공유)
-    let data = [];       // 미습득만 표시
-    let currentUser = null; // { uid, name, role }
+    let raw = [];        
+    let data = [];       
+    let currentUser = null; 
     let currentIdx = null;
     let recognition = null;
     let recBlinkTimer = null;
-    let recFinalOnly = '';  // 최종만 모을 버퍼
+    let recFinalOnly = '';  
 
     const LS_SHARED = 'yj_shared_backup_v1';
     const LS_PROG   = 'yj_progress_backup_v1';
     const LS_LOCAL_OVR = 'yj_local_overrides_v1';
 
     const ADMIN_EMAILS = new Set([
-      // 필요 시 관리자 이메일을 여기에 추가하세요. 예: 'admin@example.com'
+      // 관리자 이메일이 있으면 여기에 추가
     ]);
 
     const normSubj = s => {
@@ -347,9 +339,7 @@
     function lsSet(key, val){ localStorage.setItem(key, JSON.stringify(val)); }
 
     /* ====== 로컬 오버레이 헬퍼 ====== */
-    function loadLocalOverrides(){
-      return lsGet(LS_LOCAL_OVR, {});
-    }
+    function loadLocalOverrides(){ return lsGet(LS_LOCAL_OVR, {}); }
     function saveLocalOverride(id, patch){
       const ov = loadLocalOverrides();
       ov[id] = { ...(ov[id]||{}), ...patch };
@@ -385,7 +375,6 @@
         const { db } = window.__fb;
         const { doc, getDoc, setDoc, getDocs } = window.__fb_api;
 
-        // users 비어있으면 첫 사용자 admin
         let firstAdmin = false;
         try{
           const snapAll = await getDocs(window.__fb.colUsers());
@@ -432,7 +421,6 @@
           const snap = await getDocs(window.__fb.colProgress());
           const obj = {};
           snap.forEach(d => { obj[d.id] = d.data(); });
-          // 로컬 저장 (기존 clicks 필드를 보존)
           const local = lsGet(LS_PROG, {});
           const merged = { ...local, ...obj };
           lsSet(LS_PROG, merged);
@@ -550,7 +538,6 @@
       document.getElementById('manageUsersBtn').style.display = currentUser.role==='admin' ? 'inline-block' : 'none';
     }
 
-    /* ===== 표시이름을 즉시 헤더에 보여주기 ===== */
     function setHeaderImmediate(){
       if(!currentUser) return;
       const userEl = document.getElementById('headerUser');
@@ -709,9 +696,9 @@
       }
     }
 
-    /* ================= 색상(클릭수 기반, 보색으로 변화) ================= */
+    /* ================= 색상(클릭수 기반) ================= */
     function styleFromCount(n){
-      const t = Math.max(0, Math.min(1, n/10)); // 0..1 (10회에서 최대 변화)
+      const t = Math.max(0, Math.min(1, n/10));
       const baseHue = 230;
       const compHue = (baseHue + 180) % 360;
       const hue = baseHue*(1-t) + compHue*t;
@@ -793,6 +780,27 @@
     const passEl = document.getElementById('password');
     const nameEl = document.getElementById('displayName');
 
+    /* [추가] 마지막 로그인 정보 저장/불러오기 + 자동로그인 */
+    const LS_CRED = 'yj_last_cred_v1';
+    function saveCreds(email, pass){
+      try{ localStorage.setItem(LS_CRED, JSON.stringify({email, pass})); }catch(_){}
+    }
+    function loadCreds(){
+      try{ const v = localStorage.getItem(LS_CRED); return v? JSON.parse(v) : null; }catch{ return null; }
+    }
+    async function tryAutoLogin(){
+      try{
+        if(!window.__cloudReady) return;
+        const saved = loadCreds();
+        if(!saved || !saved.email || !saved.pass) return;
+        const { signInWithEmailAndPassword } = window.__fb_api;
+        await signInWithEmailAndPassword(window.__fb.auth, saved.email, saved.pass);
+      }catch(e){
+        console.warn('[autoLogin] skip:', e?.code || e);
+      }
+    }
+    document.addEventListener('DOMContentLoaded', ()=>{ tryAutoLogin(); });
+
     async function postLoginUI(){
       document.getElementById('loginPanel').style.display='none';
       document.getElementById('mainPanel').style.display='block';
@@ -820,6 +828,7 @@
             role = (usersMap.get(u.uid)?.role)||'user';
           }catch(_){}
           currentUser = { uid: u.uid, name: u.displayName || (u.email ? u.email.split('@')[0] : '사용자'), role };
+          saveCreds(email, pass); // [추가]
           setHeaderImmediate();
           await postLoginUI();
         }
@@ -846,6 +855,7 @@
         const cred = await createUserWithEmailAndPassword(window.__fb.auth, email, pass);
         if(disp){ await updateProfile(cred.user, { displayName: disp }); }
         await ensureUserProfile(cred.user);
+        saveCreds(email, pass); // [추가]
         showError('회원가입 완료! 이제 로그인합니다.');
       }catch(err){
         const code = err?.code || '';
@@ -960,6 +970,52 @@
     }
 
     /* ================= 질문 모달/음성/유사도/추가기능 ================= */
+
+    // === [추가] OBS/ZOOM 느낌 수음 + MediaRecorder + STT 통합 ===
+    let mediaStream = null;
+    let mediaRecorder = null;
+    let audioChunks = [];
+    let interimText = '';
+
+    async function startMicCapture(){
+      mediaStream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+          channelCount: 1
+        }
+      });
+      audioChunks = [];
+      mediaRecorder = new MediaRecorder(mediaStream, { mimeType: 'audio/webm' });
+      mediaRecorder.ondataavailable = e => { if(e.data && e.data.size) audioChunks.push(e.data); };
+      mediaRecorder.start();
+    }
+    function stopMicTracks(){
+      try{ mediaStream?.getTracks()?.forEach(t=>t.stop()); }catch(_){}
+      mediaStream = null;
+    }
+    function stopMicCapture(){
+      return new Promise(resolve=>{
+        try{
+          if(mediaRecorder && mediaRecorder.state !== 'inactive'){
+            mediaRecorder.onstop = ()=>{
+              const blob = new Blob(audioChunks, { type: 'audio/webm' });
+              const url  = URL.createObjectURL(blob);
+              const player = document.getElementById('answerAudio');
+              if(player){ player.src = url; player.style.display='block'; }
+              resolve();
+            };
+            mediaRecorder.stop();
+          }else{
+            resolve();
+          }
+        }catch(_){ resolve(); }
+        stopMicTracks();
+        mediaRecorder = null;
+      });
+    }
+
     async function openQuestion(idx){
       currentIdx=idx;
       const q=raw.find(x=>x._idx===idx); if(!q) return;
@@ -972,7 +1028,9 @@
       document.getElementById('qd').showModal();
       speak(q.question);
 
-      // 사용자별 클릭 카운트 증가 + 버튼 색 즉시 갱신
+      // [추가] 정답추가 버튼 표시
+      document.getElementById('addAnswerBtn').style.display = 'inline-block';
+
       if(currentUser){
         const id = qKey(q);
         await incrementUserClick(currentUser.uid, id);
@@ -989,36 +1047,77 @@
     function speak(txt){ const u=new SpeechSynthesisUtterance(txt); u.lang='ko-KR'; speechSynthesis.cancel(); speechSynthesis.speak(u); }
     document.getElementById('speakBtn').onclick = ()=>{ const q=raw.find(x=>x._idx===currentIdx); if(q) speak(q.question); };
 
-    // 추가설명 듣기
     document.getElementById('ttsExtraBtn').onclick = ()=>{
       const txt = (document.getElementById('extraInfo').value||'').trim();
       if(!txt){ alert('추가설명 내용이 없습니다.'); return; }
       speak(txt);
     };
 
+    // [교체] STT + 수음 시작
     function startRecognition(){
       window.SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-      if(!window.SpeechRecognition){ alert('이 브라우저는 음성 인식을 지원하지 않습니다.'); return; }
-      recognition=new SpeechRecognition();
-      recognition.lang='ko-KR'; recognition.continuous=true; recognition.interimResults=true;
-      recFinalOnly = '';
-      document.getElementById('userAnswer').innerHTML = `<span class="blink">답변녹음중.....:</span>`;
-      recognition.onresult=(event)=>{
-        for(let i=event.resultIndex;i<event.results.length;i++){
-          const t=event.results[i][0].transcript;
-          if(event.results[i].isFinal){ recFinalOnly += t + ' '; }
-        }
-      };
-      recognition.start();
+      const box = document.getElementById('userAnswer');
+      if(!box){ alert('userAnswer 요소를 찾을 수 없습니다.'); return; }
+
+      box.innerHTML = `<span class="blink">답변녹음중…</span>`;
+      box.focus();
+
+      if(!window.SpeechRecognition){
+        recFinalOnly = '';
+        interimText = '';
+      }else{
+        recognition = new SpeechRecognition();
+        recognition.lang = 'ko-KR';
+        recognition.continuous = true;
+        recognition.interimResults = true;
+        recFinalOnly = '';
+        interimText = '';
+
+        recognition.onresult = (event)=>{
+          let latestInterim = '';
+          for(let i=event.resultIndex;i<event.results.length;i++){
+            const t = event.results[i][0].transcript;
+            if(event.results[i].isFinal){
+              recFinalOnly += t + ' ';
+            }else{
+              latestInterim = t;
+            }
+          }
+          const cleanFinal = recFinalOnly.replace(/\s+/g,' ').trim();
+          box.innerHTML = '';
+          const finalNode = document.createTextNode(cleanFinal + (cleanFinal?' ':''));
+          box.appendChild(finalNode);
+          if(latestInterim){
+            const em = document.createElement('em');
+            em.style.opacity = '.6';
+            em.textContent = latestInterim;
+            box.appendChild(em);
+          }
+        };
+        recognition.onerror = (e)=>{ console.warn('[STT error]', e?.error || e); };
+        recognition.onend = ()=>{};
+        recognition.start();
+      }
+
+      startMicCapture().catch(err=>{
+        console.warn('[Mic] start fail', err);
+      });
     }
-    function stopRecognition(fromClose=false){
+    async function stopRecognition(fromClose=false){
       if(recognition){
         try{ recognition.stop(); }catch(_){}
-        recognition=null;
+        recognition = null;
       }
-      if(!fromClose){
+      await stopMicCapture();
+
+      const box = document.getElementById('userAnswer');
+      if(!fromClose && box){
         const clean = (recFinalOnly||'').replace(/\s+/g,' ').trim();
-        document.getElementById('userAnswer').textContent = clean || '';
+        box.textContent = clean || '';
+        try{
+          const r = document.createRange(); r.selectNodeContents(box); r.collapse(false);
+          const s = getSelection(); s.removeAllRanges(); s.addRange(r);
+        }catch(_){}
       }
     }
     document.getElementById('recordBtn').onclick = ()=>{ startRecognition(); };
@@ -1040,7 +1139,7 @@
       if(!q) return;
       stopRecognition(false);
       const gold=getActiveAnswerText(q);
-      const user=document.getElementById('userAnswer').textContent;
+      const user=(document.getElementById('userAnswer').textContent||'').trim();
       if(!gold){
         document.getElementById('result').innerHTML = `<div class='answer-box'>정답이 등록되어 있지 않습니다. <b>“정답 추가”</b> 버튼으로 정답을 등록하세요.</div>`;
         return;
@@ -1153,10 +1252,20 @@
         });
       }
     }
+
+    // [교체] 상단 “정답추가” 버튼: 편집 텍스트 우선 추가
     document.getElementById('addAnswerBtn').onclick = async ()=>{
       const q=raw.find(x=>x._idx===currentIdx); if(!q) return;
       if(!currentUser){ alert('로그인 후 사용하세요.'); return; }
-      const val=prompt('추가할 정답(변형)을 입력하세요'); if(!val) return;
+
+      const box = document.getElementById('userAnswer');
+      let val = (box?.textContent || '').replace(/\s+/g,' ').trim();
+      if(!val){
+        val = prompt('추가할 정답(변형)을 입력하세요');
+        if(!val) return;
+        val = String(val).trim();
+      }
+
       q.answers=q.answers||[];
       const rec = {
         text: val,
@@ -1169,7 +1278,9 @@
       q.active=q.answers.length-1;
       await persistQuestion(q);
       renderAnswerList();
+      alert('편집한 답변을 정답목록에 추가했습니다.');
     };
+
     document.getElementById('saveExtraInfoBtn').onclick = async ()=>{
       const q=raw.find(x=>x._idx===currentIdx); if(!q) return;
       q.extraInfo=(document.getElementById('extraInfo').value||'').trim();
@@ -1226,24 +1337,174 @@
       renderFollowups();
     };
 
+    document.getElementById('addQuestionBtn').onclick = openAddDialog;
+    
+    document.getElementById('deleteQuestionBtn').onclick = async ()=>{
+      const q=raw.find(x=>x._idx===currentIdx); if(!q) return;
+      if(!confirm('이 질문을 모든 사용자에게서 삭제하시겠습니까?')) return;
+      await deleteSharedQuestion(q);
+      await bootstrap();
+    };
+
+    /* ================= 내보내기/가져오기 ================= */
+    document.addEventListener('DOMContentLoaded', ()=>{
+      const exportBtn = document.getElementById('exportBtn');
+      const importBtn = document.getElementById('importBtn');
+      const importFile = document.getElementById('importFile');
+
+      function download(filename, text){
+        const blob = new Blob([text], {type: 'application/json;charset=utf-8'});
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        URL.revokeObjectURL(url);
+        a.remove();
+      }
+
+      async function exportAll(){
+        try{
+          const shared = await loadShared();
+          const progress = await loadProgress();
+          const payload = {
+            version: 5,
+            exportedAt: new Date().toISOString(),
+            shared,
+            progress
+          };
+          download('youth-interview-backup.json', JSON.stringify(payload, null, 2));
+          alert('내보내기가 완료되었습니다.');
+        }catch(e){
+          alert('내보내기 실패: ' + (e?.message || e));
+        }
+      }
+
+      async function importAll(file){
+        try{
+          const text = await file.text();
+          const obj = JSON.parse(text);
+          if(typeof obj !== 'object' || obj === null) throw new Error('JSON 형식이 아닙니다.');
+          if(!('shared' in obj) || !('progress' in obj)) throw new Error('shared/progress 키가 없습니다.');
+          if(!Array.isArray(obj.shared)) throw new Error('shared는 배열이어야 합니다.');
+          if(typeof obj.progress !== 'object') throw new Error('progress는 객체여야 합니다.');
+          if(!confirm('현재 데이터가 덮어쓰기/병합됩니다. 진행할까요?')) return;
+
+          await saveShared(obj.shared);
+          const names = Object.keys(obj.progress||{});
+          for(const key of names){
+            const learned = Array.from(new Set((obj.progress[key]?.learnedIds)||[]));
+            const clicks  = (obj.progress[key]?.clicks)||{};
+            setLocalUserProgress(key, { learnedIds: learned, clicks });
+            if(window.__cloudReady){
+              const { setDoc, doc } = window.__fb_api;
+              const db = window.__fb.db;
+              await setDoc(doc(db, "progress", key), { learnedIds: learned, clicks }, { merge:true });
+            }
+          }
+
+          await bootstrap();
+          alert('가져오기가 완료되었습니다.');
+        }catch(e){
+          console.error(e);
+          alert('가져오기 실패: ' + (e?.message||e));
+        }
+      }
+
+      if(exportBtn && !exportBtn.__bound){ exportBtn.addEventListener('click', exportAll); exportBtn.__bound=true; }
+      if(importBtn && importFile && !importBtn.__bound){
+        importBtn.addEventListener('click', ()=> importFile.click());
+        importFile.addEventListener('change', (e)=>{
+          const f = e.target.files && e.target.files[0];
+          if(f) importAll(f);
+          e.target.value = '';
+        });
+        importBtn.__bound=true;
+      }
+    });
+
+    /* ================= [추가] 글자 크기 토글 ================= */
+    (function(){
+      const btn = document.getElementById('zoomBtn');
+      if(!btn) return;
+      const steps = [1, 1.15, 1.3];
+      let i = 0;
+      const apply = () => {
+        document.documentElement.style.setProperty('--scale', steps[i]);
+        btn.textContent = (steps[i]===1) ? '글자 크게' : (steps[i]===1.15 ? '더 크게' : '기본 크기');
+      };
+      btn.addEventListener('click', ()=>{ i = (i+1) % steps.length; apply(); });
+      apply();
+    })();
+
+    /* ================= 관리자: 사용자 관리 ================= */
+    async function openUserManage(){
+      if(!currentUser || currentUser.role!=='admin'){ alert('관리자만 접근 가능합니다.'); return; }
+      const listEl = document.getElementById('userMngList');
+      listEl.innerHTML = '<div style="opacity:.7">로딩 중…</div>';
+      const usersMap = await loadUsersMap();
+      const items = [];
+      for(const [uid, info] of usersMap.entries()){
+        if(info.role==='admin') continue;
+        const row = `
+          <div style="display:flex;gap:10px;align-items:center;border:1px solid #283162;padding:8px;border-radius:10px">
+            <div style="flex:1">
+              <div><b>${esc(info.displayName||'사용자')}</b> <span class="pill">${esc(info.role||'user')}</span></div>
+              <div style="opacity:.7;font-size:12px">${esc(info.email||'')}</div>
+            </div>
+            <button class="btn danger" data-del-user="${uid}">사용자 삭제</button>
+          </div>
+        `;
+        items.push(row);
+      }
+      listEl.innerHTML = items.length ? items.join('') : '<div style="opacity:.7">일반 사용자가 없습니다.</div>';
+      listEl.querySelectorAll('[data-del-user]').forEach(btn=>{
+        btn.addEventListener('click', async ()=>{
+          const uid = btn.getAttribute('data-del-user');
+          if(!confirm('해당 사용자를 삭제하시겠습니까? (진행도도 함께 삭제)')) return;
+          try{
+            if(window.__cloudReady){
+              const { deleteDoc, doc } = window.__fb_api;
+              const db = window.__fb.db;
+              await deleteDoc(doc(db,'users', uid));
+              await deleteDoc(doc(db,'progress', uid));
+            }
+            const prog = lsGet(LS_PROG,{});
+            delete prog[uid];
+            lsSet(LS_PROG, prog);
+            await openUserManage();
+            await renderRanks();
+            await updateHeaderUser();
+            alert('삭제되었습니다.');
+          }catch(e){
+            alert('삭제 실패: ' + (e?.message||e));
+          }
+        });
+      });
+      document.getElementById('userMngDlg').showModal();
+    }
+    document.getElementById('manageUsersBtn').addEventListener('click', openUserManage);
+    document.getElementById('userMngClose').addEventListener('click', ()=> document.getElementById('userMngDlg').close());
+
     /* ================= 새 질문 추가: 폼 다이얼로그 ================= */
     function add_makeAnswerRow(value=''){
       const wrap = document.createElement('div');
       wrap.style.display = 'flex';
       wrap.style.gap = '8px';
       wrap.style.alignItems = 'center';
-
+    
       const ta = document.createElement('textarea');
       ta.rows = 2;
       ta.placeholder = '정답(모범답안)을 입력하세요';
       ta.style.flex = '1';
       ta.value = value || '';
-
+    
       const del = document.createElement('button');
       del.className = 'btn danger';
       del.textContent = '🗑';
       del.onclick = () => wrap.remove();
-
+    
       wrap.appendChild(ta);
       wrap.appendChild(del);
       return wrap;
@@ -1256,52 +1517,51 @@
       card.style.display = 'flex';
       card.style.flexDirection = 'column';
       card.style.gap = '6px';
-
+    
       const tq = document.createElement('textarea');
       tq.rows = 2; tq.placeholder = '추가질문';
       tq.value = qVal || '';
-
+    
       const ta = document.createElement('textarea');
       ta.rows = 2; ta.placeholder = '추가답변';
       ta.value = aVal || '';
-
+    
       const del = document.createElement('button');
       del.className = 'btn danger';
       del.textContent = '🗑 삭제';
       del.style.alignSelf = 'flex-end';
       del.onclick = () => card.remove();
-
+    
       card.appendChild(tq);
       card.appendChild(ta);
       card.appendChild(del);
       return card;
     }
-
+    
     function openAddDialog(){
       const dlg = document.getElementById('addDlg');
       const pill = document.getElementById('addDlgSubjectPill');
       const subj = currentSubject();
       pill.textContent = `과목: ${subj} (자동 설정)`;
-
-      // 초기화
+    
       document.getElementById('addQ').value = '';
       document.getElementById('addExtra').value = '';
       const ansBox = document.getElementById('addAnswersBox');
       ansBox.innerHTML = '';
-      ansBox.appendChild(add_makeAnswerRow()); // 최소 1칸
+      ansBox.appendChild(add_makeAnswerRow());
       const fuBox = document.getElementById('addFollowupsBox');
       fuBox.innerHTML = '';
-
+    
       dlg.showModal();
     }
     function closeAddDialog(){ document.getElementById('addDlg').close(); }
-
+    
     async function saveAddDialog(){
       const subj = currentSubject();
       const q = (document.getElementById('addQ').value||'').trim();
       const extra = (document.getElementById('addExtra').value||'').trim();
       if(!q){ alert('질문을 입력하세요.'); return; }
-
+    
       const ansBox = document.getElementById('addAnswersBox');
       const ansTexts = Array.from(ansBox.querySelectorAll('textarea'))
         .map(t => (t.value||'').trim())
@@ -1310,7 +1570,7 @@
         alert('정답(모범답안)을 최소 1개 이상 입력하세요.');
         return;
       }
-
+    
       const fuBox = document.getElementById('addFollowupsBox');
       const fuCards = Array.from(fuBox.children);
       const followups = fuCards.map(card => {
@@ -1319,7 +1579,7 @@
         const av = (ta.value||'').trim();
         return (qv && av) ? { q: qv, a: av } : null;
       }).filter(Boolean);
-
+    
       const answers = ansTexts.map((t) => ({
         text: t,
         ownerUid: currentUser?.uid || '',
@@ -1334,12 +1594,12 @@
         extraInfo: extra,
         followups
       };
-
+    
       const id = `${subj}::${q}`;
       if(raw.some(x=> `${normSubj(x.subject)}::${x.question}` === id)){
         if(!confirm('이미 같은 질문이 있습니다. 그래도 추가하시겠습니까?')) return;
       }
-
+    
       try{
         const current = await loadShared();
         current.push(seed);
@@ -1351,8 +1611,7 @@
         alert('저장 중 오류: ' + (e?.message||e));
       }
     }
-
-    document.getElementById('addQuestionBtn').onclick = openAddDialog;
+    
     document.getElementById('addDlgClose').addEventListener('click', closeAddDialog);
     document.getElementById('addDlgSave').addEventListener('click', saveAddDialog);
     document.getElementById('addAnsRowBtn').addEventListener('click', ()=>{
@@ -1361,13 +1620,6 @@
     document.getElementById('addFUrowBtn').addEventListener('click', ()=>{
       document.getElementById('addFollowupsBox').appendChild(add_makeFUrow());
     });
-
-    document.getElementById('deleteQuestionBtn').onclick = async ()=>{
-      const q=raw.find(x=>x._idx===currentIdx); if(!q) return;
-      if(!confirm('이 질문을 모든 사용자에게서 삭제하시겠습니까?')) return;
-      await deleteSharedQuestion(q);
-      await bootstrap();
-    };
 
     /* ================= 부트스트랩 ================= */
     async function bootstrap(){
@@ -1382,7 +1634,6 @@
       await updateHeaderUser();
     }
 
-    // 초기: 로그인 전에도 순위(관리자 제외) 먼저 보여줌
     (async () => {
       const base = await loadBase();
       const std  = standardize(base);
@@ -1390,458 +1641,5 @@
       await renderRanks();
     })();
   </script>
-
-  <!-- ================= [추가] OBS/ZOOM 스타일 수음 + STT + 편집/저장 패치 ================= -->
-  <script>
-  // 상태
-  let micStream = null;
-  let mediaRecorder = null;
-  let recordedChunks = [];
-  let audioCtx = null;
-  let analyser = null;
-  let micRAF = null;
-  let sttActive = false;
-  let __recognition = null;
-
-  function ensureSpeechRecognition(){
-    window.SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    return !!window.SpeechRecognition;
-  }
-
-  async function listAudioInputs(){
-    try{
-      if(!micStream){
-        const tmp = await navigator.mediaDevices.getUserMedia({
-          audio: { echoCancellation:true, noiseSuppression:true, autoGainControl:true, channelCount:1, sampleRate:48000 }
-        });
-        tmp.getTracks().forEach(t=>t.stop());
-      }
-    }catch(_){}
-    const devs = await navigator.mediaDevices.enumerateDevices();
-    return devs.filter(d=> d.kind==='audioinput');
-  }
-
-  async function startMic(deviceId){
-    stopMic();
-    micStream = await navigator.mediaDevices.getUserMedia({
-      audio:{
-        deviceId: deviceId ? { exact: deviceId } : undefined,
-        echoCancellation:true,
-        noiseSuppression:true,
-        autoGainControl:true,
-        channelCount:1,
-        sampleRate:48000
-      }
-    });
-    recordedChunks = [];
-    mediaRecorder = new MediaRecorder(micStream, { mimeType: 'audio/webm' });
-    mediaRecorder.ondataavailable = (e)=>{ if(e.data && e.data.size>0) recordedChunks.push(e.data); };
-    mediaRecorder.start(1000);
-
-    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    const src = audioCtx.createMediaStreamSource(micStream);
-    analyser = audioCtx.createAnalyser();
-    analyser.fftSize = 512;
-    src.connect(analyser);
-    drawMicLevel();
-  }
-
-  function stopMic(){
-    if(micRAF){ cancelAnimationFrame(micRAF); micRAF=null; }
-    if(analyser){ try{ analyser.disconnect(); }catch(_){ } analyser=null; }
-    if(audioCtx){ try{ audioCtx.close(); }catch(_){ } audioCtx=null; }
-    if(mediaRecorder){
-      try{ if(mediaRecorder.state!=='inactive') mediaRecorder.stop(); }catch(_){}
-      mediaRecorder = null;
-    }
-    if(micStream){
-      micStream.getTracks().forEach(t=>t.stop());
-      micStream = null;
-    }
-    const fill = document.getElementById('micFill');
-    if(fill){ fill.style.width = '0%'; fill.style.background = 'linear-gradient(90deg,#4cd97b,#6aa6ff)'; }
-  }
-
-  function drawMicLevel(){
-    if(!analyser) return;
-    const arr = new Uint8Array(analyser.frequencyBinCount);
-    analyser.getByteTimeDomainData(arr);
-    let peak = 0;
-    for(let i=0;i<arr.length;i++){
-      const v = Math.abs(arr[i]-128)/128;
-      if(v>peak) peak=v;
-    }
-    const pct = Math.min(100, Math.round(peak*200));
-    const fill = document.getElementById('micFill');
-    if(fill){
-      fill.style.width = pct + '%';
-      fill.style.background = (pct<60) ? 'linear-gradient(90deg,#4cd97b,#6aa6ff)' :
-                            (pct<85) ? 'linear-gradient(90deg,#ffd166,#faaa3c)' :
-                                       'linear-gradient(90deg,#ff6a6a,#ff3c3c)';
-    }
-    micRAF = requestAnimationFrame(drawMicLevel);
-  }
-
-  async function renderMicSelect(){
-    const sel = document.getElementById('micSelect');
-    if(!sel) return;
-    const list = await listAudioInputs();
-    sel.innerHTML = list.map(d=>`<option value="${d.deviceId}">${d.label || '마이크'}</option>`).join('') || '<option>마이크</option>';
-    sel.onchange = async ()=>{ try{ await startMic(sel.value); }catch(e){ alert('마이크 시작 실패: '+(e?.message||e)); } };
-    try{ await startMic(sel.value); }catch(e){ console.warn('초기 마이크 시작 실패', e); }
-  }
-
-  function startContinuousSTT(){
-    if(!ensureSpeechRecognition()){
-      alert('이 브라우저는 음성 인식을 지원하지 않습니다.'); return false;
-    }
-    if(__recognition){ try{ __recognition.stop(); }catch(_){ } __recognition=null; }
-    __recognition = new window.SpeechRecognition();
-    __recognition.lang='ko-KR';
-    __recognition.continuous=true;
-    __recognition.interimResults=true;
-
-    const userBox = document.getElementById('userAnswer');
-    if(userBox){
-      userBox.innerHTML = '<span class="blink">답변녹음중.....:</span>';
-      userBox.contentEditable = 'true';
-    }
-
-    __recognition.onresult = (event)=>{
-      let finalAgg = '';
-      for(let i=0;i<event.results.length;i++){
-        const res = event.results[i];
-        if(res.isFinal) finalAgg += res[0].transcript + ' ';
-      }
-      if(finalAgg){
-        const el = document.getElementById('userAnswer');
-        if(el){
-          const prev = el.innerText.trim();
-          if(!prev || prev === '답변녹음중.....:'){
-            el.innerText = finalAgg.trim();
-          }
-        }
-      }
-    };
-    __recognition.onerror = (e)=>{ console.warn('[STT]', e?.error || e); };
-    __recognition.start();
-    sttActive = true;
-    return true;
-  }
-  function stopContinuousSTT(){
-    if(__recognition){
-      try{ __recognition.stop(); }catch(_){}
-      __recognition=null;
-    }
-    sttActive = false;
-  }
-
-  (function patchOpenClose(){
-    const _open = window.openQuestion;
-    window.openQuestion = async function(idx){
-      await _open(idx);
-      const box = document.getElementById('userAnswer');
-      if(box){ box.contentEditable = 'true'; box.setAttribute('placeholder','여기에 내 답변이 기록됩니다. (수정 가능)'); }
-      try{ await renderMicSelect(); }catch(e){ console.warn('마이크 장치 초기화 실패', e); }
-    };
-    const _close = window.closeQuestion;
-    window.closeQuestion = function(){
-      stopContinuousSTT();
-      stopMic();
-      _close();
-    };
-  })();
-
-  (function hookRecordAndSubmit(){
-    const recBtn = document.getElementById('recordBtn');
-    const submitBtn = document.getElementById('submitBtn');
-
-    if(recBtn && !recBtn.__patched){
-      recBtn.addEventListener('click', async ()=>{
-        if(!micStream){
-          try{ await renderMicSelect(); }catch(e){ alert('마이크를 시작할 수 없습니다: ' + (e?.message||e)); return; }
-        }
-        if(!sttActive){
-          const ok = startContinuousSTT();
-          if(!ok) return;
-        }
-        alert('녹음이 시작되었습니다. 답변을 말씀하시고, 끝나면 "답변완료"를 누르세요.');
-      });
-      recBtn.__patched = true;
-    }
-
-    if(submitBtn && !submitBtn.__patched){
-      const origSubmit = submitBtn.onclick;
-      submitBtn.onclick = async ()=>{
-        stopContinuousSTT();
-        if(mediaRecorder && mediaRecorder.state!=='inactive'){
-          const stopped = new Promise(res=>{
-            mediaRecorder.onstop = res;
-            try{ mediaRecorder.stop(); }catch(_){}
-          });
-          await stopped;
-        }
-
-        const q = raw.find(x=>x._idx===currentIdx);
-        if(q){
-          const userEl = document.getElementById('userAnswer');
-          const finalText = (userEl?.innerText || '').replace(/\s+/g,' ').trim();
-          if(finalText && currentUser){
-            q.answers = q.answers || [];
-            const exists = q.answers.some(a =>
-              (typeof a==='object' ? (a.text||'') : String(a||'')).trim() === finalText
-            );
-            const rec = {
-              text: finalText,
-              ownerUid: currentUser.uid,
-              ownerName: currentUser.name || '사용자',
-              createdAt: new Date().toISOString()
-            };
-            if(!exists) q.answers.push(rec);
-            q.active = q.answers.length - 1;
-            await persistQuestion(q);
-            renderAnswerList();
-          }
-        }
-
-        try{ typeof origSubmit==='function' && origSubmit(); }catch(_){}
-      };
-      submitBtn.__patched = true;
-    }
-  })();
-
-  (function enableEditOwnAnswers(){
-    const _render = window.renderAnswerList;
-    window.renderAnswerList = function(){
-      _render();
-      const holder = document.getElementById('extraAnswers');
-      if(!holder) return;
-      const q = raw.find(x=>x._idx===currentIdx);
-      if(!q) return;
-
-      const radios = holder.querySelectorAll('input[name="ansPick"]');
-      radios.forEach((r, i)=>{
-        const wrap = r.parentElement;
-        const ans = (q.answers||[])[i];
-        const ownerUid = ans && typeof ans==='object' ? (ans.ownerUid||'') : '';
-        const canEdit = currentUser && (currentUser.role==='admin' || (ownerUid && ownerUid===currentUser.uid));
-
-        if(canEdit && !wrap.querySelector('[data-edit-ans]')){
-          const editBtn = document.createElement('button');
-          editBtn.className = 'btn';
-          editBtn.textContent = '✏️';
-          editBtn.setAttribute('data-edit-ans', String(i));
-          editBtn.style.marginLeft = '6px';
-          editBtn.onclick = async ()=>{
-            const curText = (typeof ans==='object' ? (ans.text||'') : String(ans||''));
-            const nv = prompt('정답 내용을 수정하세요', curText);
-            if(nv && nv.trim()){
-              if(typeof ans==='object'){ ans.text = nv.trim(); }
-              else { q.answers[i] = { text: nv.trim(), ownerUid: ownerUid, ownerName: answerOwnerName(ans)||currentUser.name||'사용자' }; }
-              await persistQuestion(q);
-              window.renderAnswerList();
-            }
-          };
-          wrap.appendChild(editBtn);
-        }
-      });
-    };
-  })();
-  </script>
-  <!-- ================= [추가 끝] ================= -->
-
-  <!-- ================= [추가] PWA 설치(바탕화면 아이콘) ================= -->
-  <script>
-  (function setupPWAInstall(){
-    if ("serviceWorker" in navigator) {
-      window.addEventListener("load", () => {
-        navigator.serviceWorker.register("./sw.js", { scope: "./" })
-          .then(reg => console.log("[SW] registered:", reg.scope))
-          .catch(err => console.warn("[SW] register failed:", err));
-      });
-    }
-
-    let deferredPrompt = null;
-    const LS_PWA_INSTALLED = "yj_pwa_installed_v1";
-    const LS_PWA_PROMPTED  = "yj_pwa_prompted_v1";
-
-    window.addEventListener("beforeinstallprompt", (e) => {
-      e.preventDefault();
-      deferredPrompt = e;
-
-      const installed = window.matchMedia("(display-mode: standalone)").matches
-                     || window.navigator.standalone === true
-                     || localStorage.getItem(LS_PWA_INSTALLED) === "1";
-
-      const prompted = localStorage.getItem(LS_PWA_PROMPTED) === "1";
-
-      if (!installed && !prompted) {
-        localStorage.setItem(LS_PWA_PROMPTED, "1");
-        setTimeout(async () => {
-          try{
-            await deferredPrompt.prompt();
-            const choice = await deferredPrompt.userChoice;
-            if (choice && choice.outcome === "accepted") {
-              console.log("[PWA] user accepted install");
-            } else {
-              console.log("[PWA] user dismissed install");
-            }
-          }catch(err){
-            console.warn("[PWA] prompt failed:", err);
-          }finally{
-            deferredPrompt = null;
-          }
-        }, 1200);
-      }
-    });
-
-    window.addEventListener("appinstalled", () => {
-      localStorage.setItem(LS_PWA_INSTALLED, "1");
-      console.log("[PWA] app installed");
-    });
-
-    function isIOS(){ return /iphone|ipad|ipod/i.test(navigator.userAgent); }
-    function inStandalone(){ return window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone === true; }
-    function showIOSHintOnce(){
-      const hinted = localStorage.getItem("yj_pwa_ios_hint_v1")==="1";
-      if(hinted) return;
-      if(isIOS() && !inStandalone()){
-        localStorage.setItem("yj_pwa_ios_hint_v1","1");
-        const tip = document.createElement("div");
-        tip.textContent = "iOS: 공유(위로 화살표) ▶ ‘홈 화면에 추가’로 설치하세요.";
-        tip.style.position="fixed";
-        tip.style.left="50%";
-        tip.style.bottom="16px";
-        tip.style.transform="translateX(-50%)";
-        tip.style.background="#15204a";
-        tip.style.border="1px solid #2b3769";
-        tip.style.color="#eaf0ff";
-        tip.style.padding="10px 14px";
-        tip.style.borderRadius="12px";
-        tip.style.zIndex="9999";
-        tip.style.boxShadow="0 8px 24px rgba(0,0,0,.35)";
-        document.body.appendChild(tip);
-        setTimeout(()=> tip.remove(), 6000);
-      }
-    }
-    window.addEventListener("load", showIOSHintOnce);
-  })();
-  </script>
-  <!-- ================= [추가 끝] ================= -->
-
-  <!-- ================= [추가] 자동로그인 ================= -->
-  <script>
-  (function autoLoginInit(){
-    const LS_AUTO_ENABLED = "yj_auto_enabled_v1";
-    const LS_AUTO_EMAIL   = "yj_auto_email_v1";
-    const LS_AUTO_PASS    = "yj_auto_pass_v1";
-    const LS_AUTO_TRIED   = "yj_auto_tried_once_v1";
-
-    const autoChk = document.getElementById("autoLoginChk");
-    const emailEl = document.getElementById("email");
-    const passEl  = document.getElementById("password");
-
-    function setInputsFromStorage(){
-      try{
-        const en = localStorage.getItem(LS_AUTO_ENABLED)==="1";
-        if(autoChk) autoChk.checked = en;
-        if(en){
-          const em = localStorage.getItem(LS_AUTO_EMAIL)||"";
-          const pw = localStorage.getItem(LS_AUTO_PASS)||"";
-          if(emailEl && !emailEl.value) emailEl.value = em;
-          if(passEl  && !passEl.value)  passEl.value  = pw;
-        }
-      }catch(_){}
-    }
-
-    function saveAutoCreds(email, pass){
-      try{
-        localStorage.setItem(LS_AUTO_ENABLED, autoChk && autoChk.checked ? "1":"0");
-        if(autoChk && autoChk.checked){
-          localStorage.setItem(LS_AUTO_EMAIL, email||"");
-          localStorage.setItem(LS_AUTO_PASS,  pass||"");
-        }else{
-          localStorage.removeItem(LS_AUTO_EMAIL);
-          localStorage.removeItem(LS_AUTO_PASS);
-        }
-      }catch(_){}
-    }
-
-    function clearTriedFlagSoon(){
-      setTimeout(()=> localStorage.removeItem(LS_AUTO_TRIED), 1500);
-    }
-
-    setInputsFromStorage();
-
-    (function patchLoginHandler(){
-      const btn = document.getElementById("loginBtn");
-      if(!btn) return;
-      if(btn.__autopatched) return;
-
-      const orig = btn.onclick;
-      btn.onclick = async function(){
-        const wantAuto = autoChk && autoChk.checked;
-        const em = (emailEl?.value||"").trim();
-        const pw = passEl?.value||"";
-
-        let unsub = null;
-        try{
-          if(window.__cloudReady && window.__fb_api?.onAuthStateChanged){
-            unsub = window.__fb_api.onAuthStateChanged(window.__fb.auth, (u)=>{
-              if(u){
-                if(wantAuto) saveAutoCreds(em, pw);
-                else saveAutoCreds("", "");
-                if(typeof unsub==="function") unsub();
-              }
-            });
-          }
-        }catch(_){}
-
-        try{ await orig?.(); }catch(e){}
-
-        clearTriedFlagSoon();
-      };
-      btn.__autopatched = true;
-    })();
-
-    (async function tryAutoOnce(){
-      try{
-        if(!window.__cloudReady) return;
-        const enabled = localStorage.getItem(LS_AUTO_ENABLED)==="1";
-        const tried   = localStorage.getItem(LS_AUTO_TRIED)==="1";
-        const em      = localStorage.getItem(LS_AUTO_EMAIL)||"";
-        const pw      = localStorage.getItem(LS_AUTO_PASS)||"";
-
-        if(!enabled || tried || !em || !pw) return;
-
-        localStorage.setItem(LS_AUTO_TRIED, "1");
-
-        if(emailEl && !emailEl.value) emailEl.value = em;
-        if(passEl  && !passEl.value)  passEl.value  = pw;
-
-        const { signInWithEmailAndPassword } = window.__fb_api || {};
-        if(typeof signInWithEmailAndPassword === "function"){
-          await signInWithEmailAndPassword(window.__fb.auth, em, pw);
-        }
-        clearTriedFlagSoon();
-      }catch(e){
-        localStorage.removeItem(LS_AUTO_TRIED);
-        console.warn("[AUTO-LOGIN] failed", e?.code || e);
-      }
-    })();
-
-    if(autoChk && !autoChk.__bound){
-      autoChk.addEventListener("change", ()=>{
-        if(!autoChk.checked){
-          saveAutoCreds("", "");
-        }else{
-          try{ localStorage.setItem(LS_AUTO_ENABLED, "1"); }catch(_){}
-        }
-      });
-      autoChk.__bound = true;
-    }
-  })();
-  </script>
-  <!-- ================= [추가 끝] ================= -->
 </body>
-  </html>
+</html>
